@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 道の駅在庫管理システム - セットアップ手順
 
 ## アーキテクチャ
@@ -94,3 +95,6 @@ app/
     ├── gmail/            # Gmail API連携・Claude解析
     └── inventory/        # データCRUD（Vercel KV）
 ```
+=======
+# michinoeki-inventory
+>>>>>>> c8ad7f27d03834be612c701bd19313099a54ffc9
