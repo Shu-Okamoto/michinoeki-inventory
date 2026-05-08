@@ -81,6 +81,11 @@ export async function POST(req: NextRequest) {
       await kvSet(userId, 'gmail_settings', payload)
       return NextResponse.json({ ok: true })
     }
+    case 'delete_sale': {
+      const list: any[] = await kvGet(userId, 'sales') || []
+      await kvSet(userId, 'sales', list.filter((s: any) => s.id !== payload.id))
+      return NextResponse.json({ ok: true })
+    }
     case 'clear_sales': {
       await kvSet(userId, 'sales', [])
       return NextResponse.json({ ok: true })
