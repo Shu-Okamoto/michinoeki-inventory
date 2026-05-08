@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { kvGet, kvSet } from '@/lib/db'
 import { authOptions } from '@/lib/auth'
+import { kvGet, kvSet } from '@/lib/db'
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2) }
 
@@ -11,11 +11,11 @@ export async function GET(req: NextRequest) {
   const userId = session.user?.email!
 
   const [locations, products, shipments, sales, gmailSettings] = await Promise.all([
-    kv.get(`locations:${userId}`),
-    kv.get(`products:${userId}`),
-    kv.get(`shipments:${userId}`),
-    kv.get(`sales:${userId}`),
-    kv.get(`gmail_settings:${userId}`),
+    kvGet(userId, 'locations'),
+    kvGet(userId, 'products'),
+    kvGet(userId, 'shipments'),
+    kvGet(userId, 'sales'),
+    kvGet(userId, 'gmail_settings'),
   ])
 
   return NextResponse.json({
@@ -37,52 +37,52 @@ export async function POST(req: NextRequest) {
 
   switch (action) {
     case 'add_location': {
-      const list: string[] = await kv.get(`locations:${userId}`) || []
+      const list: string[] = await kvGet(userId, 'locations') || []
       if (!list.includes(payload.name)) list.push(payload.name)
-      await kv.set(`locations:${userId}`, list)
+      await kvSet(userId, 'locations', list)
       return NextResponse.json({ ok: true })
     }
     case 'remove_location': {
-      const list: string[] = await kv.get(`locations:${userId}`) || []
-      await kv.set(`locations:${userId}`, list.filter(l => l !== payload.name))
+      const list: string[] = await kvGet(userId, 'locations') || []
+      await kvSet(userId, 'locations', list.filter((l: string) => l !== payload.name))
       return NextResponse.json({ ok: true })
     }
     case 'add_product': {
-      const list: any[] = await kv.get(`products:${userId}`) || []
-      if (!list.find(p => p.name === payload.name)) list.push({ name: payload.name, aliases: payload.aliases || '' })
-      await kv.set(`products:${userId}`, list)
+      const list: any[] = await kvGet(userId, 'products') || []
+      if (!list.find((p: any) => p.name === payload.name)) list.push({ name: payload.name, aliases: payload.aliases || '' })
+      await kvSet(userId, 'products', list)
       return NextResponse.json({ ok: true })
     }
     case 'remove_product': {
-      const list: any[] = await kv.get(`products:${userId}`) || []
-      await kv.set(`products:${userId}`, list.filter(p => p.name !== payload.name))
+      const list: any[] = await kvGet(userId, 'products') || []
+      await kvSet(userId, 'products', list.filter((p: any) => p.name !== payload.name))
       return NextResponse.json({ ok: true })
     }
     case 'add_shipment': {
-      const list: any[] = await kv.get(`shipments:${userId}`) || []
+      const list: any[] = await kvGet(userId, 'shipments') || []
       list.push({ id: uid(), ...payload })
-      await kv.set(`shipments:${userId}`, list)
+      await kvSet(userId, 'shipments', list)
       return NextResponse.json({ ok: true })
     }
     case 'delete_shipment': {
-      const list: any[] = await kv.get(`shipments:${userId}`) || []
-      await kv.set(`shipments:${userId}`, list.filter(s => s.id !== payload.id))
+      const list: any[] = await kvGet(userId, 'shipments') || []
+      await kvSet(userId, 'shipments', list.filter((s: any) => s.id !== payload.id))
       return NextResponse.json({ ok: true })
     }
     case 'add_sales': {
-      const list: any[] = await kv.get(`sales:${userId}`) || []
+      const list: any[] = await kvGet(userId, 'sales') || []
       for (const item of payload.items) {
         list.push({ id: uid(), date: payload.date, location: payload.location, method: payload.method || '手動', ...item })
       }
-      await kv.set(`sales:${userId}`, list)
+      await kvSet(userId, 'sales', list)
       return NextResponse.json({ ok: true })
     }
     case 'save_gmail_settings': {
-      await kv.set(`gmail_settings:${userId}`, payload)
+      await kvSet(userId, 'gmail_settings', payload)
       return NextResponse.json({ ok: true })
     }
     case 'clear_sales': {
-      await kv.set(`sales:${userId}`, [])
+      await kvSet(userId, 'sales', [])
       return NextResponse.json({ ok: true })
     }
     default:
