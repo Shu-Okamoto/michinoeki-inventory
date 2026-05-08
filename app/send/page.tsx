@@ -2,167 +2,78 @@
 import AppShell from '@/components/AppShell'
 import { useEffect, useState } from 'react'
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => new Date().toISOString().slice(0,10)
 
-export default function SalesPage() {
-  const [data, setData] = useState<any>({ locations: [], products: [], sales: [] })
-  const [loc, setLoc] = useState('')
-  const [date, setDate] = useState(today())
-  const [entries, setEntries] = useState<Array<{ product: string; qty: string }>>([
-    { product: '', qty: '' }
-  ])
+export default function SendPage() {
+  const [data, setData] = useState<any>({ locations:[], products:[], shipments:[] })
+  const [loc, setLoc] = useState(''); const [prod, setProd] = useState('')
+  const [qty, setQty] = useState(''); const [date, setDate] = useState(today())
   const [toast, setToast] = useState('')
-  const [loading, setLoading] = useState(false)
 
-  useEffect(() => { fetch('/api/inventory').then(r => r.json()).then(setData) }, [])
+  useEffect(() => { fetch('/api/inventory').then(r=>r.json()).then(setData) }, [])
 
-  function showToast(m: string) { setToast(m); setTimeout(() => setToast(''), 3000) }
-
-  function addRow() {
-    setEntries(prev => [...prev, { product: '', qty: '' }])
+  async function api(action: string, payload: any) {
+    await fetch('/api/inventory', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action,payload}) })
+    fetch('/api/inventory').then(r=>r.json()).then(setData)
   }
 
-  function removeRow(i: number) {
-    setEntries(prev => prev.filter((_, idx) => idx !== i))
+  function showToast(m: string) { setToast(m); setTimeout(()=>setToast(''),2500) }
+
+  async function addShipment() {
+    if (!loc||!prod||!qty||!date) { showToast('⚠️ すべての項目を入力してください'); return }
+    await api('add_shipment', { date, location:loc, product:prod, qty:Number(qty) })
+    setQty(''); showToast(`✅ ${loc} に ${prod} を ${qty}個 出荷登録しました`)
   }
 
-  function updateEntry(i: number, field: 'product' | 'qty', val: string) {
-    setEntries(prev => prev.map((e, idx) => idx === i ? { ...e, [field]: val } : e))
-  }
-
-  async function submit() {
-    if (!loc) { showToast('⚠️ 道の駅を選択してください'); return }
-    const items = entries.filter(e => e.product && e.qty && Number(e.qty) > 0)
-    if (items.length === 0) { showToast('⚠️ 商品と個数を入力してください'); return }
-
-    setLoading(true)
-    await fetch('/api/inventory', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'add_sales',
-        payload: {
-          date, location: loc, method: '手入力',
-          items: items.map(e => ({ product: e.product, qty: Number(e.qty) }))
-        }
-      })
-    })
-    setLoading(false)
-    setEntries([{ product: '', qty: '' }])
-    showToast(`✅ ${loc} の売上を${items.length}件登録しました`)
-    fetch('/api/inventory').then(r => r.json()).then(setData)
-  }
-
-  // 今日の売上サマリー
-  const todaySales = data.sales?.filter((s: any) => s.date === today()) || []
-
-  const s = {
-    label: { fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase' as const, color: 'var(--muted)', display: 'block', marginBottom: 6 },
-    input: { background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', color: 'var(--text)', fontSize: 14, outline: 'none', fontFamily: 'inherit', width: '100%' },
-    select: { background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 12px', color: 'var(--text)', fontSize: 14, outline: 'none', fontFamily: 'inherit', width: '100%' },
+  const s = { box:{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:12,padding:20,marginBottom:24} as any,
+    label:{fontSize:11,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase' as any,color:'var(--muted)',display:'block',marginBottom:6},
+    input:{background:'var(--surface2)',border:'1px solid var(--border)',borderRadius:8,padding:'9px 12px',color:'var(--text)',fontSize:13,width:'100%',outline:'none',fontFamily:'inherit'},
+    btn:{background:'var(--accent)',color:'#0f1117',border:'none',borderRadius:8,padding:'9px 18px',fontSize:13,fontWeight:600,cursor:'pointer'},
+    th:{padding:'12px 16px',textAlign:'left' as any,fontSize:11,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase' as any,color:'var(--muted)'},
+    td:{padding:'12px 16px',borderTop:'1px solid var(--border)',fontSize:13},
   }
 
   return (
     <AppShell>
-      {/* 入力フォーム */}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', marginBottom: 24 }}>
-        <div style={{ padding: '14px 20px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', fontSize: 15, fontWeight: 700 }}>
-          📝 売上入力
+      <div style={s.box}>
+        <h2 style={{fontSize:14,fontWeight:700,marginBottom:16}}>出荷登録</h2>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:16}}>
+          {[
+            ['道の駅', <select style={s.input} value={loc} onChange={e=>setLoc(e.target.value)}>
+              <option value="">選択</option>{data.locations.map((l:string)=><option key={l}>{l}</option>)}</select>],
+            ['商品', <select style={s.input} value={prod} onChange={e=>setProd(e.target.value)}>
+              <option value="">選択</option>{data.products.map((p:any)=><option key={p.name}>{p.name}</option>)}</select>],
+            ['個数', <input style={s.input} type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)} placeholder="20" />],
+            ['日付', <input style={s.input} type="date" value={date} onChange={e=>setDate(e.target.value)} />],
+          ].map(([label, ctrl], i) => (
+            <div key={i}><label style={s.label}>{label as string}</label>{ctrl as any}</div>
+          ))}
         </div>
-        <div style={{ padding: 20 }}>
-          {/* 道の駅・日付 */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
-            <div>
-              <label style={s.label}>道の駅</label>
-              <select style={s.select} value={loc} onChange={e => setLoc(e.target.value)}>
-                <option value="">選択してください</option>
-                {data.locations?.map((l: string) => <option key={l} value={l}>{l}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={s.label}>日付</label>
-              <input type="date" style={s.input} value={date} onChange={e => setDate(e.target.value)} />
-            </div>
-          </div>
-
-          {/* 商品行 */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 36px', gap: 8, marginBottom: 8 }}>
-              <span style={{ ...s.label, marginBottom: 0 }}>商品名</span>
-              <span style={{ ...s.label, marginBottom: 0 }}>販売数</span>
-              <span />
-            </div>
-            {entries.map((entry, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 36px', gap: 8, marginBottom: 8 }}>
-                <select style={s.select} value={entry.product} onChange={e => updateEntry(i, 'product', e.target.value)}>
-                  <option value="">商品を選択</option>
-                  {data.products?.map((p: any) => <option key={p.name} value={p.name}>{p.name}</option>)}
-                </select>
-                <input
-                  type="number" min="1" placeholder="個数"
-                  style={{ ...s.input, textAlign: 'center' }}
-                  value={entry.qty}
-                  onChange={e => updateEntry(i, 'qty', e.target.value)}
-                />
-                <button
-                  onClick={() => removeRow(i)}
-                  style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--muted)', fontSize: 16, cursor: 'pointer' }}
-                >×</button>
-              </div>
-            ))}
-          </div>
-
-          {/* ボタン */}
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button onClick={addRow} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 16px', fontSize: 13, color: 'var(--text)', cursor: 'pointer' }}>
-              ＋ 商品を追加
-            </button>
-            <button
-              onClick={submit}
-              disabled={loading}
-              style={{ background: 'var(--accent)', color: '#0f1117', border: 'none', borderRadius: 8, padding: '9px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: loading ? .6 : 1 }}
-            >
-              {loading ? '登録中...' : '✅ 売上を登録する'}
-            </button>
-          </div>
-        </div>
+        <button style={s.btn} onClick={addShipment}>📦 出荷登録する</button>
       </div>
 
-      {/* 本日の売上 */}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ padding: '14px 20px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', fontSize: 14, fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>📊 本日の売上記録</span>
-          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: 'var(--accent)' }}>{todaySales.length}件</span>
-        </div>
-        {todaySales.length === 0 ? (
-          <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>まだ記録がありません</div>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: 'var(--surface2)' }}>
-                {['道の駅', '商品', '販売数'].map(h => (
-                  <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--muted)' }}>{h}</th>
-                ))}
+      <div style={{border:'1px solid var(--border)',borderRadius:12,overflow:'auto'}}>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+          <thead><tr style={{background:'var(--surface2)'}}>
+            {['日付','道の駅','商品','出荷数',''].map(h=><th key={h} style={s.th}>{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {[...data.shipments].reverse().slice(0,30).map((sh:any) => (
+              <tr key={sh.id}>
+                <td style={{...s.td,fontFamily:'Space Mono,monospace',fontSize:11,color:'var(--muted)'}}>{sh.date}</td>
+                <td style={{...s.td,color:'var(--accent2)'}}>{sh.location}</td>
+                <td style={s.td}>{sh.product}</td>
+                <td style={{...s.td,fontFamily:'Space Mono,monospace',color:'var(--accent)'}}>{sh.qty}個</td>
+                <td style={s.td}>
+                  <button onClick={()=>api('delete_shipment',{id:sh.id})} style={{background:'#450a0a',color:'var(--danger)',border:'1px solid var(--danger)',borderRadius:6,padding:'3px 10px',fontSize:11,cursor:'pointer'}}>削除</button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {todaySales.map((s2: any) => (
-                <tr key={s2.id}>
-                  <td style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', color: 'var(--accent2)' }}>{s2.location}</td>
-                  <td style={{ padding: '10px 16px', borderTop: '1px solid var(--border)' }}>{s2.product}</td>
-                  <td style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', fontFamily: 'Space Mono, monospace', color: 'var(--accent)', fontWeight: 700 }}>{s2.qty}個</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+            ))}
+            {data.shipments.length===0&&<tr><td colSpan={5} style={{...s.td,textAlign:'center',color:'var(--muted)',padding:32}}>出荷記録がありません</td></tr>}
+          </tbody>
+        </table>
       </div>
-
-      {toast && (
-        <div style={{ position: 'fixed', bottom: 24, right: 24, background: 'var(--surface2)', border: '1px solid var(--accent)', borderRadius: 10, padding: '14px 20px', fontSize: 13, color: 'var(--accent)', zIndex: 9999 }}>
-          {toast}
-        </div>
-      )}
+      {toast&&<div style={{position:'fixed',bottom:24,right:24,background:'var(--surface2)',border:'1px solid var(--accent)',borderRadius:10,padding:'14px 20px',fontSize:13,color:'var(--accent)',zIndex:9999}}>{toast}</div>}
     </AppShell>
   )
 }
