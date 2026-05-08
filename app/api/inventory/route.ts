@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { kv } from '@vercel/kv'
+import { kvGet, kvSet } from '@/lib/db'
 import { authOptions } from '@/lib/auth'
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2) }
