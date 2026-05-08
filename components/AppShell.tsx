@@ -8,6 +8,7 @@ import styles from './shell.module.css'
 const NAV = [
   { href: '/dashboard', label: '📊 在庫状況' },
   { href: '/send',      label: '📦 出荷登録' },
+  { href: '/sales',     label: '✏️ 売上入力' },
   { href: '/email',     label: '✉️ Gmail連携' },
   { href: '/history',   label: '📋 販売履歴' },
   { href: '/settings',  label: '⚙️ 設定' },
