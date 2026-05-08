@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { kv } from '@vercel/kv'
-import { authOptions } from '@/lib/auth'
+import { authOptions } from '../auth/[...nextauth]/route'
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2) }
 
