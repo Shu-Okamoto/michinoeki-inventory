@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
     const messages = listRes.data.messages || []
     if (messages.length === 0) return NextResponse.json({ emails: [] })
 
-    const products: Array<{ name: string }> = await kv.get(`products:${userId}`) || []
+    const products: Array<{ name: string }> = await kvGet(userId, 'products') || []
     const productNames = products.map(p => p.name)
 
     const results = []
@@ -112,15 +112,15 @@ export async function POST(req: NextRequest) {
   const { messageId, location, date, items } = body
 
   try {
-    const key = `sales:${userId}`
-    const sales: any[] = await kv.get(key) || []
+    
+    const sales: any[] = await kvGet(userId, 'sales') || []
     for (const item of items) {
       sales.push({
         id: Date.now().toString(36) + Math.random().toString(36).slice(2),
         date, location, product: item.product, qty: item.qty, method: 'Gmail自動解析', messageId,
       })
     }
-    await kv.set(key, sales)
+    await kvSet(userId, 'sales', sales)
 
     if (messageId) {
       const gmail = getGmailClient(session.accessToken)
