@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { google } from 'googleapis'
 import { authOptions } from '@/lib/auth'
-import { kv } from '@vercel/kv'
+import { kvGet, kvSet } from '@/lib/db'
 
 function localParse(text: string): Array<{ product: string; qty: number }> {
   const results: Array<{ product: string; qty: number }> = []
