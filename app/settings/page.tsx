@@ -9,7 +9,7 @@ export default function SettingsPage() {
   const [toast, setToast] = useState('')
 
   useEffect(() => { refresh() }, [])
-  function refresh() { fetch('/api/inventory').then(r=>r.json()).then(d=>{ setData(d); setKyohaiUrl(d.settings?.kyohaiUrl || '') }) }
+  function refresh() { fetch('/api/inventory').then(r=>r.json()).then(d=>{ setData(d); setKyohaiUrl(d.settings?.kyohaiUrl || 'https://coop-delivery.vercel.app/') }) }
 
   async function api(action: string, payload: any) {
     await fetch('/api/inventory', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action,payload}) })

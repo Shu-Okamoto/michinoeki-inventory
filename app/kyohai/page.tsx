@@ -2,13 +2,15 @@
 import AppShell from '@/components/AppShell'
 import { useEffect, useState } from 'react'
 
+const DEFAULT_KYOHAI_URL = 'https://coop-delivery.vercel.app/'
+
 export default function KyohaiPage() {
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetch('/api/inventory').then(r => r.json()).then(d => {
-      setUrl(d.settings?.kyohaiUrl || '')
+      setUrl(d.settings?.kyohaiUrl || DEFAULT_KYOHAI_URL)
       setLoading(false)
     })
   }, [])
