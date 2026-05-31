@@ -10,12 +10,14 @@ export async function GET(req: NextRequest) {
   if (!session?.accessToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const userId = session.user?.email!
 
-  const [locations, products, shipments, sales, gmailSettings] = await Promise.all([
+  const [locations, products, shipments, sales, gmailSettings, producers, announcements] = await Promise.all([
     kvGet(userId, 'locations'),
     kvGet(userId, 'products'),
     kvGet(userId, 'shipments'),
     kvGet(userId, 'sales'),
     kvGet(userId, 'gmail_settings'),
+    kvGet(userId, 'producers'),
+    kvGet(userId, 'announcements'),
   ])
 
   return NextResponse.json({
@@ -24,6 +26,8 @@ export async function GET(req: NextRequest) {
     shipments: shipments || [],
     sales: sales || [],
     gmailSettings: gmailSettings || { labelId: '', labelName: '', autoFetch: false },
+    producers: producers || [],
+    announcements: announcements || [],
   })
 }
 
@@ -45,6 +49,33 @@ export async function POST(req: NextRequest) {
     case 'remove_location': {
       const list: string[] = await kvGet(userId, 'locations') || []
       await kvSet(userId, 'locations', list.filter((l: string) => l !== payload.name))
+      return NextResponse.json({ ok: true })
+    }
+    case 'add_producer': {
+      const list: any[] = await kvGet(userId, 'producers') || []
+      list.push({ id: uid(), name: payload.name, email: payload.email || '', phone: payload.phone || '', note: payload.note || '' })
+      await kvSet(userId, 'producers', list)
+      return NextResponse.json({ ok: true })
+    }
+    case 'update_producer': {
+      const list: any[] = await kvGet(userId, 'producers') || []
+      await kvSet(userId, 'producers', list.map((p: any) => p.id === payload.id ? { ...p, ...payload } : p))
+      return NextResponse.json({ ok: true })
+    }
+    case 'remove_producer': {
+      const list: any[] = await kvGet(userId, 'producers') || []
+      await kvSet(userId, 'producers', list.filter((p: any) => p.id !== payload.id))
+      return NextResponse.json({ ok: true })
+    }
+    case 'add_announcement': {
+      const list: any[] = await kvGet(userId, 'announcements') || []
+      list.push({ id: uid(), date: payload.date || new Date().toISOString().slice(0, 10), title: payload.title, body: payload.body || '', pinned: !!payload.pinned })
+      await kvSet(userId, 'announcements', list)
+      return NextResponse.json({ ok: true })
+    }
+    case 'remove_announcement': {
+      const list: any[] = await kvGet(userId, 'announcements') || []
+      await kvSet(userId, 'announcements', list.filter((a: any) => a.id !== payload.id))
       return NextResponse.json({ ok: true })
     }
     case 'add_product': {

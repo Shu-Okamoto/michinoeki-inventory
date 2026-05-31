@@ -5,13 +5,25 @@ import { useEffect } from 'react'
 import Link from 'next/link'
 import styles from './shell.module.css'
 
-const NAV = [
-  { href: '/dashboard', label: '📊 在庫状況' },
-  { href: '/send',      label: '📦 出荷登録' },
-  { href: '/sales',     label: '✏️ 売上入力' },
-  { href: '/email',     label: '✉️ Gmail連携' },
-  { href: '/history',   label: '📋 販売履歴' },
-  { href: '/settings',  label: '⚙️ 設定' },
+const NAV_GROUPS = [
+  {
+    title: '生産者ポータル',
+    items: [
+      { href: '/news',      label: '📢 お知らせ' },
+      { href: '/send',      label: '📦 納品数入力' },
+      { href: '/dashboard', label: '📊 在庫・納品状況' },
+    ],
+  },
+  {
+    title: 'みかわ管理',
+    items: [
+      { href: '/producers', label: '👤 組合員マスタ' },
+      { href: '/sales',     label: '✏️ 売上入力' },
+      { href: '/email',     label: '✉️ Gmail連携' },
+      { href: '/history',   label: '📋 販売履歴' },
+      { href: '/settings',  label: '⚙️ 設定' },
+    ],
+  },
 ]
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -35,8 +47,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div className={styles.logo}>
           <div className={styles.logoIcon}>🌿</div>
           <div>
-            <div className={styles.logoText}>道の駅 在庫管理</div>
-            <div className={styles.logoSub}>INVENTORY SYSTEM</div>
+            <div className={styles.logoText}>みかわ 産直ポータル</div>
+            <div className={styles.logoSub}>MIKAWA PORTAL</div>
           </div>
         </div>
         <div className={styles.headerRight}>
@@ -48,14 +60,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </header>
 
       <nav className={styles.nav}>
-        {NAV.map(({ href, label }) => (
-          <Link
-            key={href}
-            href={href}
-            className={`${styles.navItem} ${pathname === href ? styles.active : ''}`}
-          >
-            {label}
-          </Link>
+        {NAV_GROUPS.map(group => (
+          <div key={group.title} className={styles.navGroup}>
+            <span className={styles.navGroupTitle}>{group.title}</span>
+            <div className={styles.navGroupItems}>
+              {group.items.map(({ href, label }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`${styles.navItem} ${pathname === href ? styles.active : ''}`}
+                >
+                  {label}
+                </Link>
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
 
