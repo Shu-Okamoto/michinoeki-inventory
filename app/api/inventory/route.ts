@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   if (!session?.accessToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const userId = session.user?.email!
 
-  const [locations, products, shipments, sales, gmailSettings, producers, announcements] = await Promise.all([
+  const [locations, products, shipments, sales, gmailSettings, producers, announcements, settings] = await Promise.all([
     kvGet(userId, 'locations'),
     kvGet(userId, 'products'),
     kvGet(userId, 'shipments'),
@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
     kvGet(userId, 'gmail_settings'),
     kvGet(userId, 'producers'),
     kvGet(userId, 'announcements'),
+    kvGet(userId, 'settings'),
   ])
 
   return NextResponse.json({
@@ -28,6 +29,7 @@ export async function GET(req: NextRequest) {
     gmailSettings: gmailSettings || { labelId: '', labelName: '', autoFetch: false },
     producers: producers || [],
     announcements: announcements || [],
+    settings: settings || { kyohaiUrl: '' },
   })
 }
 
@@ -53,8 +55,13 @@ export async function POST(req: NextRequest) {
     }
     case 'add_producer': {
       const list: any[] = await kvGet(userId, 'producers') || []
-      list.push({ id: uid(), name: payload.name, email: payload.email || '', phone: payload.phone || '', note: payload.note || '' })
+      list.push({ id: uid(), name: payload.name, role: payload.role || '生産者', company: payload.company || '', email: payload.email || '', phone: payload.phone || '', note: payload.note || '' })
       await kvSet(userId, 'producers', list)
+      return NextResponse.json({ ok: true })
+    }
+    case 'save_settings': {
+      const cur: any = await kvGet(userId, 'settings') || {}
+      await kvSet(userId, 'settings', { ...cur, ...payload })
       return NextResponse.json({ ok: true })
     }
     case 'update_producer': {

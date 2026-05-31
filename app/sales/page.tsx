@@ -33,7 +33,7 @@ export default function SalesPage() {
   async function submit() {
     if (!loc) { showToast('⚠️ 道の駅を選択してください'); return }
     const items = entries.filter(e => e.product && e.qty && Number(e.qty) > 0)
-    if (items.length === 0) { showToast('⚠️ 商品と個数を入力してください'); return }
+    if (items.length === 0) { showToast('⚠️ 商品とレジ通過数を入力してください'); return }
 
     setLoading(true)
     await fetch('/api/inventory', {
@@ -49,7 +49,7 @@ export default function SalesPage() {
     })
     setLoading(false)
     setEntries([{ product: '', qty: '' }])
-    showToast(`✅ ${loc} の売上を${items.length}件登録しました`)
+    showToast(`✅ ${loc} のレジ通過数を${items.length}件登録しました`)
     fetch('/api/inventory').then(r => r.json()).then(setData)
   }
 
@@ -67,13 +67,13 @@ export default function SalesPage() {
       {/* 入力フォーム */}
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', marginBottom: 24 }}>
         <div style={{ padding: '14px 20px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', fontSize: 15, fontWeight: 700 }}>
-          📝 売上入力
+          🧾 レジ通過数入力（産直品）
         </div>
         <div style={{ padding: 20 }}>
           {/* 道の駅・日付 */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
             <div>
-              <label style={s.label}>道の駅</label>
+              <label style={s.label}>販売先（道の駅）</label>
               <select style={s.select} value={loc} onChange={e => setLoc(e.target.value)}>
                 <option value="">選択してください</option>
                 {data.locations?.map((l: string) => <option key={l} value={l}>{l}</option>)}
@@ -89,7 +89,7 @@ export default function SalesPage() {
           <div style={{ marginBottom: 12 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 36px', gap: 8, marginBottom: 8 }}>
               <span style={{ ...s.label, marginBottom: 0 }}>商品名</span>
-              <span style={{ ...s.label, marginBottom: 0 }}>販売数</span>
+              <span style={{ ...s.label, marginBottom: 0 }}>レジ通過数</span>
               <span />
             </div>
             {entries.map((entry, i) => (
@@ -122,7 +122,7 @@ export default function SalesPage() {
               disabled={loading}
               style={{ background: 'var(--accent)', color: '#0f1117', border: 'none', borderRadius: 8, padding: '9px 24px', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: loading ? .6 : 1 }}
             >
-              {loading ? '登録中...' : '✅ 売上を登録する'}
+              {loading ? '登録中...' : '✅ レジ通過数を登録する'}
             </button>
           </div>
         </div>
@@ -131,7 +131,7 @@ export default function SalesPage() {
       {/* 本日の売上 */}
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '14px 20px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', fontSize: 14, fontWeight: 700, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>📊 本日の売上記録</span>
+          <span>📊 本日のレジ通過記録</span>
           <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: 'var(--accent)' }}>{todaySales.length}件</span>
         </div>
         {todaySales.length === 0 ? (
@@ -140,7 +140,7 @@ export default function SalesPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--surface2)' }}>
-                {['道の駅', '商品', '販売数'].map(h => (
+                {['販売先', '商品', 'レジ通過数'].map(h => (
                   <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--muted)' }}>{h}</th>
                 ))}
               </tr>

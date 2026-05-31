@@ -10,15 +10,16 @@ const NAV_GROUPS = [
     title: '生産者ポータル',
     items: [
       { href: '/news',      label: '📢 お知らせ' },
-      { href: '/send',      label: '📦 納品数入力' },
+      { href: '/send',      label: '📦 みかわ納品数入力' },
       { href: '/dashboard', label: '📊 在庫・納品状況' },
+      { href: '/kyohai',    label: '🚚 共配システム' },
     ],
   },
   {
-    title: 'みかわ管理',
+    title: '組合管理（アグリパートナーズ）',
     items: [
-      { href: '/producers', label: '👤 組合員マスタ' },
-      { href: '/sales',     label: '✏️ 売上入力' },
+      { href: '/producers', label: '👤 ユーザーマスタ' },
+      { href: '/sales',     label: '🧾 レジ通過数入力' },
       { href: '/email',     label: '✉️ Gmail連携' },
       { href: '/history',   label: '📋 販売履歴' },
       { href: '/settings',  label: '⚙️ 設定' },
@@ -47,8 +48,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div className={styles.logo}>
           <div className={styles.logoIcon}>🌿</div>
           <div>
-            <div className={styles.logoText}>みかわ 産直ポータル</div>
-            <div className={styles.logoSub}>MIKAWA PORTAL</div>
+            <div className={styles.logoText}>いわくにアグリパートナーズ 産直ポータル</div>
+            <div className={styles.logoSub}>IWAKUNI AGRI PARTNERS</div>
           </div>
         </div>
         <div className={styles.headerRight}>

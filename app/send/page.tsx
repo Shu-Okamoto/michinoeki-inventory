@@ -41,7 +41,7 @@ export default function SendPage() {
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:16}}>
           {[
             ['組合員（生産者）', <select style={s.input} value={producer} onChange={e=>setProducer(e.target.value)}>
-              <option value="">選択</option>{(data.producers||[]).map((p:any)=><option key={p.id} value={p.name}>{p.name}</option>)}</select>],
+              <option value="">選択</option>{(data.producers||[]).filter((p:any)=>(p.role||'生産者')==='生産者').map((p:any)=><option key={p.id} value={p.name}>{p.name}</option>)}</select>],
             ['納品先（道の駅）', <select style={s.input} value={loc} onChange={e=>setLoc(e.target.value)}>
               <option value="">選択</option>{data.locations.map((l:string)=><option key={l}>{l}</option>)}</select>],
             ['商品', <select style={s.input} value={prod} onChange={e=>setProd(e.target.value)}>

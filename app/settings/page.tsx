@@ -3,12 +3,13 @@ import AppShell from '@/components/AppShell'
 import { useEffect, useState } from 'react'
 
 export default function SettingsPage() {
-  const [data, setData] = useState<any>({ locations:[], products:[] })
+  const [data, setData] = useState<any>({ locations:[], products:[], settings:{} })
   const [newLoc, setNewLoc] = useState(''); const [newProd, setNewProd] = useState(''); const [newAlias, setNewAlias] = useState('')
+  const [kyohaiUrl, setKyohaiUrl] = useState('')
   const [toast, setToast] = useState('')
 
   useEffect(() => { refresh() }, [])
-  function refresh() { fetch('/api/inventory').then(r=>r.json()).then(setData) }
+  function refresh() { fetch('/api/inventory').then(r=>r.json()).then(d=>{ setData(d); setKyohaiUrl(d.settings?.kyohaiUrl || '') }) }
 
   async function api(action: string, payload: any) {
     await fetch('/api/inventory', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action,payload}) })
@@ -71,6 +72,17 @@ export default function SettingsPage() {
           }
         </div>
       </div>
+      <div style={s.box}>
+        <div style={s.boxHead}>🚚 共配システム連携</div>
+        <div style={s.boxBody}>
+          <div style={{display:'flex',gap:8}}>
+            <input style={s.input} value={kyohaiUrl} onChange={e=>setKyohaiUrl(e.target.value)} placeholder="共配システムのURL（例: https://...）" />
+            <button style={s.btn} onClick={async()=>{await api('save_settings',{kyohaiUrl});showToast('✅ 保存しました')}}>💾 保存</button>
+          </div>
+          <p style={{fontSize:11,color:'var(--muted)',marginTop:8}}>「共配システム」メニューからこのURLを開けるようになります</p>
+        </div>
+      </div>
+
       {toast&&<div style={{position:'fixed',bottom:24,right:24,background:'var(--surface2)',border:'1px solid var(--accent)',borderRadius:10,padding:'14px 20px',fontSize:13,color:'var(--accent)',zIndex:9999}}>{toast}</div>}
     </AppShell>
   )

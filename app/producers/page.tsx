@@ -2,12 +2,15 @@
 import AppShell from '@/components/AppShell'
 import { useEffect, useState } from 'react'
 
-interface Producer { id: string; name: string; email: string; phone: string; note: string }
+interface Producer { id: string; name: string; role: string; company: string; email: string; phone: string; note: string }
+const ROLES = ['生産者', '販売者', '組合管理者']
+const emptyForm = { name: '', role: '生産者', company: '', email: '', phone: '', note: '' }
 
 export default function ProducersPage() {
   const [list, setList] = useState<Producer[]>([])
-  const [form, setForm] = useState({ name: '', email: '', phone: '', note: '' })
+  const [form, setForm] = useState({ ...emptyForm })
   const [editing, setEditing] = useState<string | null>(null)
+  const [filterRole, setFilterRole] = useState('')
   const [toast, setToast] = useState('')
 
   useEffect(() => { refresh() }, [])
@@ -20,19 +23,19 @@ export default function ProducersPage() {
   }
 
   async function save() {
-    if (!form.name) { showToast('⚠️ 組合員名を入力してください'); return }
+    if (!form.name) { showToast('⚠️ 氏名・名称を入力してください'); return }
     if (editing) {
       await api('update_producer', { id: editing, ...form })
       showToast('✅ 更新しました')
     } else {
       await api('add_producer', form)
-      showToast('✅ 組合員を登録しました')
+      showToast('✅ ユーザーを登録しました')
     }
-    setForm({ name: '', email: '', phone: '', note: '' }); setEditing(null)
+    setForm({ ...emptyForm }); setEditing(null)
   }
 
   function startEdit(p: Producer) {
-    setEditing(p.id); setForm({ name: p.name, email: p.email, phone: p.phone, note: p.note })
+    setEditing(p.id); setForm({ name: p.name, role: p.role || '生産者', company: p.company || '', email: p.email, phone: p.phone, note: p.note })
   }
 
   const s = {
@@ -47,35 +50,49 @@ export default function ProducersPage() {
     td: { padding: '10px 14px', borderTop: '1px solid var(--border)', fontSize: 13 },
     delBtn: { background: '#450a0a', color: 'var(--danger)', border: '1px solid var(--danger)', borderRadius: 6, padding: '3px 10px', fontSize: 11, cursor: 'pointer' },
     editBtn: { background: 'var(--surface2)', color: 'var(--accent2)', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', fontSize: 11, cursor: 'pointer', marginRight: 6 },
+    filterOn: { background: 'var(--accent)', color: '#0f1117', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' },
+    filterOff: { background: 'var(--surface2)', color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 14px', fontSize: 12, cursor: 'pointer' },
   }
 
   return (
     <AppShell>
       <div style={s.box}>
-        <div style={s.boxHead}>{editing ? '✏️ 組合員を編集' : '👤 組合員（生産者）を登録'}</div>
+        <div style={s.boxHead}>{editing ? '✏️ ユーザーを編集' : '👤 ユーザー（生産者・販売者・組合管理者）を登録'}</div>
         <div style={s.boxBody}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 12, marginBottom: 16 }}>
-            <div><label style={s.label}>組合員名 *</label><input style={s.input} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="例: 山田 太郎" /></div>
-            <div><label style={s.label}>メール</label><input style={s.input} value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="farmer@example.com" /></div>
+            <div><label style={s.label}>氏名・名称 *</label><input style={s.input} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="例: 山田 太郎 / 道の駅みかわ" /></div>
+            <div><label style={s.label}>区分</label><select style={s.input} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>{ROLES.map(r => <option key={r} value={r}>{r}</option>)}</select></div>
+            <div><label style={s.label}>所属会社・販売先</label><input style={s.input} value={form.company} onChange={e => setForm({ ...form, company: e.target.value })} placeholder="例: みかわ" /></div>
+            <div><label style={s.label}>メール</label><input style={s.input} value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="user@example.com" /></div>
             <div><label style={s.label}>電話</label><input style={s.input} value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="090-..." /></div>
             <div><label style={s.label}>備考</label><input style={s.input} value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} placeholder="生産品目など" /></div>
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <button style={s.btn} onClick={save}>{editing ? '💾 更新する' : '＋ 登録する'}</button>
-            {editing && <button style={s.btnGhost} onClick={() => { setEditing(null); setForm({ name: '', email: '', phone: '', note: '' }) }}>キャンセル</button>}
+            {editing && <button style={s.btnGhost} onClick={() => { setEditing(null); setForm({ ...emptyForm }) }}>キャンセル</button>}
           </div>
         </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <button style={filterRole === '' ? s.filterOn : s.filterOff} onClick={() => setFilterRole('')}>すべて</button>
+        {ROLES.map(r => <button key={r} style={filterRole === r ? s.filterOn : s.filterOff} onClick={() => setFilterRole(r)}>{r}</button>)}
       </div>
 
       <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead><tr style={{ background: 'var(--surface2)' }}>
-            {['組合員名', 'メール', '電話', '備考', ''].map(h => <th key={h} style={s.th}>{h}</th>)}
+            {['氏名・名称', '区分', '所属・販売先', 'メール', '電話', '備考', ''].map(h => <th key={h} style={s.th}>{h}</th>)}
           </tr></thead>
           <tbody>
-            {list.map(p => (
+            {list.filter(p => !filterRole || (p.role || '生産者') === filterRole).map(p => {
+              const role = p.role || '生産者'
+              const rc = role === '生産者' ? 'var(--accent)' : role === '販売者' ? 'var(--accent2)' : 'var(--warn)'
+              return (
               <tr key={p.id}>
                 <td style={{ ...s.td, fontWeight: 600 }}>{p.name}</td>
+                <td style={s.td}><span style={{ background: 'var(--surface2)', color: rc, border: `1px solid ${rc}`, padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{role}</span></td>
+                <td style={{ ...s.td, color: 'var(--muted)' }}>{p.company || '—'}</td>
                 <td style={{ ...s.td, color: 'var(--muted)' }}>{p.email || '—'}</td>
                 <td style={{ ...s.td, color: 'var(--muted)' }}>{p.phone || '—'}</td>
                 <td style={{ ...s.td, color: 'var(--muted)' }}>{p.note || '—'}</td>
@@ -84,8 +101,8 @@ export default function ProducersPage() {
                   <button style={s.delBtn} onClick={() => { if (confirm(`「${p.name}」を削除しますか？`)) api('remove_producer', { id: p.id }) }}>削除</button>
                 </td>
               </tr>
-            ))}
-            {list.length === 0 && <tr><td colSpan={5} style={{ ...s.td, textAlign: 'center', color: 'var(--muted)', padding: 32 }}>まだ組合員が登録されていません</td></tr>}
+            )})}
+            {list.length === 0 && <tr><td colSpan={7} style={{ ...s.td, textAlign: 'center', color: 'var(--muted)', padding: 32 }}>まだユーザーが登録されていません</td></tr>}
           </tbody>
         </table>
       </div>
