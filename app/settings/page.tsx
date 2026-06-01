@@ -25,7 +25,7 @@ export default function SettingsPage() {
     input:{background:'var(--surface2)',border:'1px solid var(--border)',borderRadius:8,padding:'9px 12px',color:'var(--text)',fontSize:13,outline:'none',fontFamily:'inherit',flex:1},
     btn:{background:'var(--accent)',color:'#0f1117',border:'none',borderRadius:8,padding:'9px 16px',fontSize:13,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap' as any},
     row:{background:'var(--surface2)',borderRadius:8,padding:'10px 14px',display:'flex',alignItems:'center',gap:8,marginBottom:8},
-    delBtn:{background:'#450a0a',color:'var(--danger)',border:'1px solid var(--danger)',borderRadius:6,padding:'3px 10px',fontSize:11,cursor:'pointer'},
+    delBtn:{background:'#FBE0DE',color:'var(--danger)',border:'1px solid var(--danger)',borderRadius:6,padding:'3px 10px',fontSize:11,cursor:'pointer'},
   }
 
   return (

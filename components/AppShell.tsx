@@ -46,7 +46,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <div className={styles.shell}>
       <header className={styles.header}>
         <div className={styles.logo}>
-          <div className={styles.logoIcon}>🌿</div>
+          <div className={styles.logoIcon}>🌾</div>
           <div>
             <div className={styles.logoText}>いわくにアグリパートナーズ 産直ポータル</div>
             <div className={styles.logoSub}>IWAKUNI AGRI PARTNERS</div>

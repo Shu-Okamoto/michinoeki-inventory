@@ -13,8 +13,8 @@ export default function Home() {
 
   if (status === 'loading') return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', flexDirection:'column', gap:'16px' }}>
-      <div style={{ width:40, height:40, border:'3px solid #2e3352', borderTopColor:'#4ade80', borderRadius:'50%', animation:'spin 0.7s linear infinite' }} />
-      <p style={{ color:'#64748b', fontSize:14 }}>読み込み中...</p>
+      <div style={{ width:40, height:40, border:'3px solid var(--border)', borderTopColor:'var(--accent)', borderRadius:'50%', animation:'spin 0.7s linear infinite' }} />
+      <p style={{ color:'var(--muted)', fontSize:14 }}>読み込み中...</p>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )
@@ -26,13 +26,13 @@ export default function Home() {
     }}>
       <div style={{ textAlign:'center' }}>
         <div style={{
-          width:72, height:72, background:'linear-gradient(135deg,#4ade80,#22d3ee)',
+          width:72, height:72, background:'linear-gradient(135deg,#5DA63E,#2BA6C4)',
           borderRadius:20, display:'flex', alignItems:'center', justifyContent:'center',
-          fontSize:36, margin:'0 auto 20px'
-        }}>🌿</div>
-        <h1 style={{ fontSize:28, fontWeight:700, marginBottom:8 }}>道の駅 在庫管理</h1>
-        <p style={{ color:'#64748b', fontSize:14, lineHeight:1.7 }}>
-          Gmail連携でメールを自動解析<br />道の駅の在庫をリアルタイム管理
+          fontSize:36, margin:'0 auto 20px', boxShadow:'0 4px 16px rgba(61,58,52,.12)'
+        }}>🌾</div>
+        <h1 style={{ fontSize:26, fontWeight:700, marginBottom:8 }}>いわくにアグリパートナーズ</h1>
+        <p style={{ color:'var(--muted)', fontSize:14, lineHeight:1.7 }}>
+          産直ポータル<br />生産者・販売会社・組合をつなぐ納品管理
         </p>
       </div>
 
@@ -40,9 +40,9 @@ export default function Home() {
         onClick={() => signIn('google')}
         style={{
           display:'flex', alignItems:'center', gap:12,
-          background:'#fff', color:'#0f1117', border:'none',
+          background:'var(--surface)', color:'var(--text)', border:'1px solid var(--border)',
           borderRadius:12, padding:'14px 28px', fontSize:15, fontWeight:600,
-          boxShadow:'0 4px 24px rgba(0,0,0,0.3)', transition:'transform 0.15s',
+          boxShadow:'0 4px 20px rgba(61,58,52,0.12)', transition:'transform 0.15s',
         }}
         onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-2px)')}
         onMouseLeave={e => (e.currentTarget.style.transform = 'translateY(0)')}
@@ -56,7 +56,7 @@ export default function Home() {
         Googleアカウントでログイン
       </button>
 
-      <p style={{ color:'#2e3352', fontSize:12 }}>
+      <p style={{ color:'var(--muted)', fontSize:12 }}>
         Gmailの読み取り権限を使用します
       </p>
     </div>

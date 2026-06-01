@@ -69,7 +69,7 @@ export default function SendPage() {
                 <td style={s.td}>{sh.product}</td>
                 <td style={{...s.td,fontFamily:'Space Mono,monospace',color:'var(--accent)'}}>{sh.qty}個</td>
                 <td style={s.td}>
-                  <button onClick={()=>api('delete_shipment',{id:sh.id})} style={{background:'#450a0a',color:'var(--danger)',border:'1px solid var(--danger)',borderRadius:6,padding:'3px 10px',fontSize:11,cursor:'pointer'}}>削除</button>
+                  <button onClick={()=>api('delete_shipment',{id:sh.id})} style={{background:'#FBE0DE',color:'var(--danger)',border:'1px solid var(--danger)',borderRadius:6,padding:'3px 10px',fontSize:11,cursor:'pointer'}}>削除</button>
                 </td>
               </tr>
             ))}

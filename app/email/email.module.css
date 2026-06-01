@@ -9,8 +9,8 @@
   display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
 }
 .savedBadge {
-  font-size: 11px; color: var(--accent);
-  background: #14532d; padding: 3px 10px; border-radius: 20px;
+  font-size: 11px; color: #3F7D24;
+  background: #E3F1D6; padding: 3px 10px; border-radius: 20px;
 }
 .boxBody { padding: 20px; }
 
@@ -40,7 +40,7 @@
   border: none; border-radius: 8px; padding: 9px 18px; font-size: 13px; font-weight: 600;
   transition: background .15s; display: flex; align-items: center; gap: 6px; white-space: nowrap;
 }
-.btnFetch:hover:not(:disabled) { background: #86efac; }
+.btnFetch:hover:not(:disabled) { background: #4E9234; }
 .btnFetch:disabled { opacity: .6; }
 
 .hint { font-size: 12px; color: var(--muted); line-height: 1.7; }
@@ -120,13 +120,13 @@
   border: none; border-radius: 8px; padding: 9px 18px; font-size: 13px; font-weight: 600;
   transition: background .15s; white-space: nowrap;
 }
-.btnApply:hover:not(:disabled) { background: #86efac; }
+.btnApply:hover:not(:disabled) { background: #4E9234; }
 .btnApply:disabled { opacity: .6; }
 
 .toast {
   position: fixed; bottom: 24px; right: 24px;
   background: var(--surface2); border: 1px solid var(--accent);
   border-radius: 10px; padding: 14px 20px; font-size: 13px; color: var(--accent);
-  z-index: 9999; animation: slideIn .3s ease; box-shadow: 0 4px 24px rgba(0,0,0,.4);
+  z-index: 9999; animation: slideIn .3s ease; box-shadow: 0 4px 20px rgba(61,58,52,.15);
 }
 @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }

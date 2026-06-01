@@ -24,7 +24,7 @@ export default function HistoryPage() {
   const s = {
     th:{padding:'12px 16px',textAlign:'left' as any,fontSize:11,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase' as any,color:'var(--muted)'},
     td:{padding:'12px 16px',borderTop:'1px solid var(--border)',fontSize:13},
-    delBtn:{background:'#450a0a',color:'var(--danger)',border:'1px solid var(--danger)',borderRadius:6,padding:'3px 10px',fontSize:11,cursor:'pointer'},
+    delBtn:{background:'#FBE0DE',color:'var(--danger)',border:'1px solid var(--danger)',borderRadius:6,padding:'3px 10px',fontSize:11,cursor:'pointer'},
   }
 
   const sorted = [...sales].reverse()

@@ -1,16 +1,16 @@
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap');
 
 :root {
-  --bg: #0f1117;
-  --surface: #1a1d27;
-  --surface2: #22263a;
-  --border: #2e3352;
-  --accent: #4ade80;
-  --accent2: #22d3ee;
-  --warn: #fb923c;
-  --danger: #f87171;
-  --text: #e2e8f0;
-  --muted: #64748b;
+  --bg: #FBF6E9;
+  --surface: #FFFFFF;
+  --surface2: #F6EFDD;
+  --border: #E7DCC4;
+  --accent: #5DA63E;
+  --accent2: #2BA6C4;
+  --warn: #E8941F;
+  --danger: #D9534F;
+  --text: #3D3A34;
+  --muted: #948B79;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
