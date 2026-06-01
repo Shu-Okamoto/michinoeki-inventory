@@ -34,20 +34,21 @@ export default function HistoryPage() {
       <div style={{border:'1px solid var(--border)',borderRadius:12,overflow:'auto'}}>
         <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
           <thead><tr style={{background:'var(--surface2)'}}>
-            {['日付','道の駅','商品','販売数','入力方法',''].map(h=><th key={h} style={s.th}>{h}</th>)}
+            {['日付','生産者','販売先','商品','レジ通過数','入力方法',''].map(h=><th key={h} style={s.th}>{h}</th>)}
           </tr></thead>
           <tbody>
             {sorted.slice(0,200).map((s2:any)=>(
               <tr key={s2.id}>
                 <td style={{...s.td,fontFamily:'Space Mono,monospace',fontSize:11,color:'var(--muted)'}}>{s2.date}</td>
+                <td style={s.td}>{s2.producer||'—'}</td>
                 <td style={{...s.td,color:'var(--accent2)'}}>{s2.location}</td>
                 <td style={s.td}>{s2.product}</td>
-                <td style={{...s.td,fontFamily:'Space Mono,monospace',color:'var(--accent)'}}>{s2.qty}個</td>
+                <td style={{...s.td,fontFamily:'Space Mono,monospace',color:'var(--accent)'}}>{s2.qty}点</td>
                 <td style={s.td}><span style={{background:'var(--surface2)',color:'var(--muted)',padding:'2px 8px',borderRadius:4,fontSize:11}}>{s2.method||'手動'}</span></td>
                 <td style={s.td}><button style={s.delBtn} onClick={()=>deleteSale(s2.id)}>削除</button></td>
               </tr>
             ))}
-            {sales.length===0&&<tr><td colSpan={6} style={{...s.td,textAlign:'center',color:'var(--muted)',padding:32}}>販売記録がありません</td></tr>}
+            {sales.length===0&&<tr><td colSpan={7} style={{...s.td,textAlign:'center',color:'var(--muted)',padding:32}}>記録がありません</td></tr>}
           </tbody>
         </table>
       </div>

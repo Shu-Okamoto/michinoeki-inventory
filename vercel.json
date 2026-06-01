@@ -2,5 +2,8 @@
   "version": 2,
   "framework": "nextjs",
   "buildCommand": "next build",
-  "outputDirectory": ".next"
+  "outputDirectory": ".next",
+  "crons": [
+    { "path": "/api/cron/send-sales", "schedule": "0 * * * *" }
+  ]
 }
