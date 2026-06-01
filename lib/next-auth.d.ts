@@ -4,6 +4,13 @@ declare module 'next-auth' {
   interface Session {
     accessToken?: string
     refreshToken?: string
+    user?: {
+      name?: string | null
+      email?: string | null
+      image?: string | null
+      role?: string
+      loginId?: string
+    }
   }
 }
 
@@ -12,5 +19,7 @@ declare module 'next-auth/jwt' {
     accessToken?: string
     refreshToken?: string
     expiresAt?: number
+    role?: string
+    loginId?: string
   }
 }

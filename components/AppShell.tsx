@@ -1,32 +1,48 @@
 'use client'
 import { useSession, signOut } from 'next-auth/react'
 import { useRouter, usePathname } from 'next/navigation'
-import { useState } from 'react'
-import { useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import styles from './shell.module.css'
 
-const NAV_GROUPS = [
-  {
-    title: '生産者ポータル',
-    items: [
-      { href: '/news',      label: '📢 お知らせ' },
-      { href: '/send',      label: '📦 みかわ納品数入力' },
-      { href: '/dashboard', label: '📊 在庫・納品状況' },
-      { href: '/kyohai',    label: '🚚 共配システム' },
-    ],
-  },
-  {
-    title: '組合管理（アグリパートナーズ）',
-    items: [
-      { href: '/producers', label: '👤 ユーザーマスタ' },
-      { href: '/sales',     label: '🧾 レジ通過数入力' },
-      { href: '/email',     label: '✉️ Gmail連携' },
-      { href: '/history',   label: '📋 販売履歴' },
-      { href: '/settings',  label: '⚙️ 設定' },
-    ],
-  },
-]
+const ITEMS = {
+  news:      { href: '/news',      label: '📢 お知らせ' },
+  send:      { href: '/send',      label: '📦 みかわ納品数入力' },
+  dashboard: { href: '/dashboard', label: '📊 在庫・納品状況' },
+  kyohai:    { href: '/kyohai',    label: '🚚 共配システム' },
+  producers: { href: '/producers', label: '👤 ユーザーマスタ' },
+  sales:     { href: '/sales',     label: '🧾 レジ通過数入力' },
+  email:     { href: '/email',     label: '✉️ Gmail連携' },
+  history:   { href: '/history',   label: '📋 販売履歴' },
+  settings:  { href: '/settings',  label: '⚙️ 設定' },
+}
+
+type View = 'admin' | 'seller' | 'producer' | 'guest'
+
+function roleToView(role?: string): View {
+  if (role === '組合管理者') return 'admin'
+  if (role === '販売者') return 'seller'
+  if (role === '生産者') return 'producer'
+  return 'guest'
+}
+
+const VIEW_LABEL: Record<View, string> = {
+  admin: '全体ビュー', seller: '販売会社ビュー', producer: '生産者ビュー', guest: '—',
+}
+
+function groupsForView(view: View) {
+  if (view === 'admin') return [
+    { title: '生産者ポータル', items: [ITEMS.news, ITEMS.send, ITEMS.dashboard, ITEMS.kyohai] },
+    { title: '組合管理（アグリパートナーズ）', items: [ITEMS.producers, ITEMS.sales, ITEMS.email, ITEMS.history, ITEMS.settings] },
+  ]
+  if (view === 'seller') return [
+    { title: '販売会社ビュー', items: [ITEMS.sales, ITEMS.news, ITEMS.dashboard, ITEMS.kyohai] },
+  ]
+  if (view === 'producer') return [
+    { title: '生産者ビュー', items: [ITEMS.news, ITEMS.send, ITEMS.dashboard, ITEMS.kyohai] },
+  ]
+  return []
+}
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession()
@@ -44,6 +60,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     </div>
   )
 
+  const role = (session.user as any)?.role as string | undefined
+  const view = roleToView(role)
+  const groups = groupsForView(view)
+  const identity = session.user?.email || (session.user as any)?.loginId || session.user?.name || ''
+
   return (
     <div className={styles.shell}>
       <header className={styles.header}>
@@ -57,33 +78,48 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <div className={styles.headerRight}>
-          <span className={styles.userEmail}>{session.user?.email}</span>
+          {view !== 'guest' && <span className={styles.viewBadge}>{VIEW_LABEL[view]}</span>}
+          <span className={styles.userEmail}>{session.user?.name || identity}</span>
           <button className={styles.signOutBtn} onClick={() => signOut({ callbackUrl: '/' })}>
             ログアウト
           </button>
         </div>
       </header>
 
-      <nav className={styles.nav}>
-        {NAV_GROUPS.map(group => (
-          <div key={group.title} className={styles.navGroup}>
-            <span className={styles.navGroupTitle}>{group.title}</span>
-            <div className={styles.navGroupItems}>
-              {group.items.map(({ href, label }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  className={`${styles.navItem} ${pathname === href ? styles.active : ''}`}
-                >
-                  {label}
-                </Link>
-              ))}
-            </div>
+      {view === 'guest' ? (
+        <main className={styles.main}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 40, textAlign: 'center' }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>🔒</div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>アクセス権限がありません</h2>
+            <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }}>
+              このアカウント（{identity}）にはまだ区分が割り当てられていません。<br />
+              組合管理者にユーザー登録を依頼してください。
+            </p>
           </div>
-        ))}
-      </nav>
-
-      <main className={styles.main}>{children}</main>
+        </main>
+      ) : (
+        <>
+          <nav className={styles.nav}>
+            {groups.map(group => (
+              <div key={group.title} className={styles.navGroup}>
+                <span className={styles.navGroupTitle}>{group.title}</span>
+                <div className={styles.navGroupItems}>
+                  {group.items.map(({ href, label }) => (
+                    <Link
+                      key={href}
+                      href={href}
+                      className={`${styles.navItem} ${pathname === href ? styles.active : ''}`}
+                    >
+                      {label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </nav>
+          <main className={styles.main}>{children}</main>
+        </>
+      )}
     </div>
   )
 }

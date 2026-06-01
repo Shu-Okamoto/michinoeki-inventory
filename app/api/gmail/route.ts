@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { google } from 'googleapis'
 import { authOptions } from '@/lib/auth'
 import { kvGet, kvSet } from '@/lib/db'
+import { ORG } from '@/lib/users'
 
 function localParse(text: string): Array<{ product: string; qty: number }> {
   const results: Array<{ product: string; qty: number }> = []
@@ -74,7 +75,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const labelId = searchParams.get('label') || 'INBOX'
-  const userId = session.user?.email || 'me'
+  const userId = ORG
 
   try {
     const gmail = getGmailClient(session.accessToken)
@@ -107,7 +108,7 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.accessToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const userId = session.user?.email || 'me'
+  const userId = ORG
   const body = await req.json()
   const { messageId, location, date, items } = body
 

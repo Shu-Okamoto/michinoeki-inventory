@@ -2,9 +2,9 @@
 import AppShell from '@/components/AppShell'
 import { useEffect, useState } from 'react'
 
-interface Producer { id: string; name: string; role: string; company: string; email: string; phone: string; note: string }
+interface Producer { id: string; name: string; role: string; company: string; email: string; phone: string; note: string; loginId?: string; hasLogin?: boolean }
 const ROLES = ['生産者', '販売者', '組合管理者']
-const emptyForm = { name: '', role: '生産者', company: '', email: '', phone: '', note: '' }
+const emptyForm = { name: '', role: '生産者', company: '', email: '', phone: '', note: '', loginId: '', password: '' }
 
 export default function ProducersPage() {
   const [list, setList] = useState<Producer[]>([])
@@ -35,7 +35,7 @@ export default function ProducersPage() {
   }
 
   function startEdit(p: Producer) {
-    setEditing(p.id); setForm({ name: p.name, role: p.role || '生産者', company: p.company || '', email: p.email, phone: p.phone, note: p.note })
+    setEditing(p.id); setForm({ name: p.name, role: p.role || '生産者', company: p.company || '', email: p.email, phone: p.phone, note: p.note, loginId: p.loginId || '', password: '' })
   }
 
   const s = {
@@ -67,6 +67,13 @@ export default function ProducersPage() {
             <div><label style={s.label}>電話</label><input style={s.input} value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="090-..." /></div>
             <div><label style={s.label}>備考</label><input style={s.input} value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} placeholder="生産品目など" /></div>
           </div>
+          <div style={{ borderTop: '1px solid var(--border)', margin: '4px 0 16px', paddingTop: 16 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 10 }}>🔑 ログイン情報（ID/パスワード認証）</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 12 }}>
+              <div><label style={s.label}>ログインID</label><input style={s.input} value={form.loginId} onChange={e => setForm({ ...form, loginId: e.target.value })} placeholder="例: yamada" autoComplete="off" /></div>
+              <div><label style={s.label}>パスワード{editing && '（変更時のみ）'}</label><input type="password" style={s.input} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder={editing ? '変更する場合のみ入力' : '初期パスワード'} autoComplete="new-password" /></div>
+            </div>
+          </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <button style={s.btn} onClick={save}>{editing ? '💾 更新する' : '＋ 登録する'}</button>
             {editing && <button style={s.btnGhost} onClick={() => { setEditing(null); setForm({ ...emptyForm }) }}>キャンセル</button>}
@@ -82,7 +89,7 @@ export default function ProducersPage() {
       <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead><tr style={{ background: 'var(--surface2)' }}>
-            {['氏名・名称', '区分', '所属・販売先', 'メール', '電話', '備考', ''].map(h => <th key={h} style={s.th}>{h}</th>)}
+            {['氏名・名称', '区分', '所属・販売先', 'ログイン', 'メール', '電話', ''].map(h => <th key={h} style={s.th}>{h}</th>)}
           </tr></thead>
           <tbody>
             {list.filter(p => !filterRole || (p.role || '生産者') === filterRole).map(p => {
@@ -93,9 +100,11 @@ export default function ProducersPage() {
                 <td style={{ ...s.td, fontWeight: 600 }}>{p.name}</td>
                 <td style={s.td}><span style={{ background: 'var(--surface2)', color: rc, border: `1px solid ${rc}`, padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{role}</span></td>
                 <td style={{ ...s.td, color: 'var(--muted)' }}>{p.company || '—'}</td>
+                <td style={s.td}>{p.hasLogin
+                  ? <span style={{ color: 'var(--accent)' }}>✓ {p.loginId}</span>
+                  : <span style={{ color: 'var(--muted)' }}>未設定</span>}</td>
                 <td style={{ ...s.td, color: 'var(--muted)' }}>{p.email || '—'}</td>
                 <td style={{ ...s.td, color: 'var(--muted)' }}>{p.phone || '—'}</td>
-                <td style={{ ...s.td, color: 'var(--muted)' }}>{p.note || '—'}</td>
                 <td style={{ ...s.td, whiteSpace: 'nowrap' }}>
                   <button style={s.editBtn} onClick={() => startEdit(p)}>編集</button>
                   <button style={s.delBtn} onClick={() => { if (confirm(`「${p.name}」を削除しますか？`)) api('remove_producer', { id: p.id }) }}>削除</button>
