@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { kvGet, kvSet } from '@/lib/db'
 import { ORG, hashPassword, roleToView } from '@/lib/users'
+import { sendSalesDigest } from '@/lib/salesmail'
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2) }
 
@@ -63,7 +64,7 @@ const ADMIN_ACTIONS = new Set([
   'add_location', 'remove_location', 'add_product', 'remove_product',
   'add_producer', 'update_producer', 'remove_producer',
   'add_announcement', 'remove_announcement',
-  'save_settings', 'save_gmail_settings', 'clear_sales',
+  'save_settings', 'save_gmail_settings', 'clear_sales', 'send_sales_mail',
 ])
 
 export async function POST(req: NextRequest) {
@@ -181,7 +182,7 @@ export async function POST(req: NextRequest) {
       if (role === '生産者') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
       const list: any[] = await kvGet(ORG, 'sales') || []
       for (const item of payload.items) {
-        list.push({ id: uid(), date: payload.date, location: payload.location, method: payload.method || '手動', ...item })
+        list.push({ id: uid(), date: payload.date, location: payload.location, producer: payload.producer || '', method: payload.method || '手動', ...item })
       }
       await kvSet(ORG, 'sales', list)
       return NextResponse.json({ ok: true })
@@ -199,6 +200,10 @@ export async function POST(req: NextRequest) {
     case 'clear_sales': {
       await kvSet(ORG, 'sales', [])
       return NextResponse.json({ ok: true })
+    }
+    case 'send_sales_mail': {
+      const summary = await sendSalesDigest(payload?.date)
+      return NextResponse.json({ ok: true, summary })
     }
     default:
       return NextResponse.json({ error: 'Unknown action' }, { status: 400 })

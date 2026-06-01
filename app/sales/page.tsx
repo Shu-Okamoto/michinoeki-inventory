@@ -5,8 +5,9 @@ import { useEffect, useState } from 'react'
 const today = () => new Date().toISOString().slice(0, 10)
 
 export default function SalesPage() {
-  const [data, setData] = useState<any>({ locations: [], products: [], sales: [] })
+  const [data, setData] = useState<any>({ locations: [], products: [], sales: [], producers: [] })
   const [loc, setLoc] = useState('')
+  const [producer, setProducer] = useState('')
   const [date, setDate] = useState(today())
   const [entries, setEntries] = useState<Array<{ product: string; qty: string }>>([
     { product: '', qty: '' }
@@ -31,7 +32,8 @@ export default function SalesPage() {
   }
 
   async function submit() {
-    if (!loc) { showToast('⚠️ 道の駅を選択してください'); return }
+    if (!producer) { showToast('⚠️ 生産者を選択してください'); return }
+    if (!loc) { showToast('⚠️ 販売先を選択してください'); return }
     const items = entries.filter(e => e.product && e.qty && Number(e.qty) > 0)
     if (items.length === 0) { showToast('⚠️ 商品とレジ通過数を入力してください'); return }
 
@@ -42,14 +44,14 @@ export default function SalesPage() {
       body: JSON.stringify({
         action: 'add_sales',
         payload: {
-          date, location: loc, method: '手入力',
+          date, location: loc, producer, method: '手入力',
           items: items.map(e => ({ product: e.product, qty: Number(e.qty) }))
         }
       })
     })
     setLoading(false)
     setEntries([{ product: '', qty: '' }])
-    showToast(`✅ ${loc} のレジ通過数を${items.length}件登録しました`)
+    showToast(`✅ ${producer} のレジ通過数を${items.length}件登録しました`)
     fetch('/api/inventory').then(r => r.json()).then(setData)
   }
 
@@ -70,8 +72,15 @@ export default function SalesPage() {
           🧾 レジ通過数入力（産直品）
         </div>
         <div style={{ padding: 20 }}>
-          {/* 道の駅・日付 */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+          {/* 生産者・販売先・日付 */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12, marginBottom: 20 }}>
+            <div>
+              <label style={s.label}>生産者（送信先）</label>
+              <select style={s.select} value={producer} onChange={e => setProducer(e.target.value)}>
+                <option value="">選択してください</option>
+                {(data.producers || []).filter((p: any) => (p.role || '生産者') === '生産者').map((p: any) => <option key={p.id} value={p.name}>{p.name}</option>)}
+              </select>
+            </div>
             <div>
               <label style={s.label}>販売先（道の駅）</label>
               <select style={s.select} value={loc} onChange={e => setLoc(e.target.value)}>
