@@ -55,6 +55,11 @@ export default function SalesPage() {
     fetch('/api/inventory').then(r => r.json()).then(setData)
   }
 
+  // 選択した生産者が納品した商品のみを抽出
+  const producerProducts: string[] = producer
+    ? Array.from(new Set((data.shipments || []).filter((x: any) => x.producer === producer).map((x: any) => x.product)))
+    : []
+
   // 今日の売上サマリー
   const todaySales = data.sales?.filter((s: any) => s.date === today()) || []
 
@@ -76,7 +81,7 @@ export default function SalesPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12, marginBottom: 20 }}>
             <div>
               <label style={s.label}>生産者（送信先）</label>
-              <select style={s.select} value={producer} onChange={e => setProducer(e.target.value)}>
+              <select style={s.select} value={producer} onChange={e => { setProducer(e.target.value); setEntries([{ product: '', qty: '' }]) }}>
                 <option value="">選択してください</option>
                 {(data.producers || []).filter((p: any) => (p.role || '生産者') === '生産者').map((p: any) => <option key={p.id} value={p.name}>{p.name}</option>)}
               </select>
@@ -95,9 +100,14 @@ export default function SalesPage() {
           </div>
 
           {/* 商品行 */}
+          {!producer ? (
+            <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>まず生産者を選択してください。</p>
+          ) : producerProducts.length === 0 ? (
+            <p style={{ fontSize: 13, color: 'var(--warn)', marginBottom: 12 }}>⚠️ この生産者の納品実績がありません。先に「みかわ納品数入力」で納品を登録してください。</p>
+          ) : (
           <div style={{ marginBottom: 12 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 36px', gap: 8, marginBottom: 8 }}>
-              <span style={{ ...s.label, marginBottom: 0 }}>商品名</span>
+              <span style={{ ...s.label, marginBottom: 0 }}>商品名（{producer} の納品商品）</span>
               <span style={{ ...s.label, marginBottom: 0 }}>レジ通過数</span>
               <span />
             </div>
@@ -105,7 +115,7 @@ export default function SalesPage() {
               <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 36px', gap: 8, marginBottom: 8 }}>
                 <select style={s.select} value={entry.product} onChange={e => updateEntry(i, 'product', e.target.value)}>
                   <option value="">商品を選択</option>
-                  {data.products?.map((p: any) => <option key={p.name} value={p.name}>{p.name}</option>)}
+                  {producerProducts.map((name: string) => <option key={name} value={name}>{name}</option>)}
                 </select>
                 <input
                   type="number" min="1" placeholder="個数"
@@ -120,6 +130,7 @@ export default function SalesPage() {
               </div>
             ))}
           </div>
+          )}
 
           {/* ボタン */}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
