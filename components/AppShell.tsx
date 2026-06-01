@@ -13,7 +13,7 @@ const ITEMS = {
   producers: { href: '/producers', label: '👤 ユーザーマスタ' },
   sales:     { href: '/sales',     label: '🧾 レジ通過数入力' },
   email:     { href: '/email',     label: '✉️ Gmail連携' },
-  history:   { href: '/history',   label: '📋 販売履歴' },
+  history:   { href: '/history',   label: '📋 販売履歴・売上明細' },
   settings:  { href: '/settings',  label: '⚙️ 設定' },
 }
 
@@ -33,10 +33,10 @@ const VIEW_LABEL: Record<View, string> = {
 function groupsForView(view: View) {
   if (view === 'admin') return [
     { title: '生産者ポータル', items: [ITEMS.news, ITEMS.send, ITEMS.dashboard, ITEMS.kyohai] },
-    { title: '組合管理（アグリパートナーズ）', items: [ITEMS.producers, ITEMS.sales, ITEMS.email, ITEMS.history, ITEMS.settings] },
+    { title: '組合管理（アグリパートナーズ）', items: [ITEMS.producers, ITEMS.sales, ITEMS.history, ITEMS.email, ITEMS.settings] },
   ]
   if (view === 'seller') return [
-    { title: '販売会社ビュー', items: [ITEMS.sales, ITEMS.news, ITEMS.dashboard, ITEMS.kyohai] },
+    { title: '販売会社ビュー', items: [ITEMS.news, ITEMS.sales, ITEMS.history] },
   ]
   if (view === 'producer') return [
     { title: '生産者ビュー', items: [ITEMS.news, ITEMS.send, ITEMS.dashboard, ITEMS.kyohai] },

@@ -2,17 +2,25 @@
 import AppShell from '@/components/AppShell'
 import { useEffect, useState } from 'react'
 
-interface Announcement { id: string; date: string; title: string; body: string; pinned: boolean }
+interface Reply { id: string; author: string; role: string; body: string; date: string }
+interface Announcement { id: string; date: string; title: string; body: string; pinned: boolean; replies?: Reply[] }
 const today = () => new Date().toISOString().slice(0, 10)
 
 export default function NewsPage() {
   const [list, setList] = useState<Announcement[]>([])
+  const [me, setMe] = useState<{ role: string; name: string }>({ role: '', name: '' })
   const [form, setForm] = useState({ date: today(), title: '', body: '', pinned: false })
   const [composing, setComposing] = useState(false)
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({})
   const [toast, setToast] = useState('')
 
   useEffect(() => { refresh() }, [])
-  function refresh() { fetch('/api/inventory').then(r => r.json()).then(d => setList(d.announcements || [])) }
+  function refresh() {
+    fetch('/api/inventory').then(r => r.json()).then(d => {
+      setList(d.announcements || [])
+      setMe({ role: d.me?.role || '', name: d.me?.name || '' })
+    })
+  }
   function showToast(m: string) { setToast(m); setTimeout(() => setToast(''), 2500) }
 
   async function api(action: string, payload: any) {
@@ -20,11 +28,21 @@ export default function NewsPage() {
     refresh()
   }
 
+  const isAdmin = me.role === '組合管理者'
+
   async function post() {
     if (!form.title) { showToast('⚠️ タイトルを入力してください'); return }
     await api('add_announcement', form)
     setForm({ date: today(), title: '', body: '', pinned: false }); setComposing(false)
     showToast('✅ お知らせを掲載しました')
+  }
+
+  async function sendReply(annId: string) {
+    const body = (replyDrafts[annId] || '').trim()
+    if (!body) return
+    await api('add_reply', { announcementId: annId, body })
+    setReplyDrafts(prev => ({ ...prev, [annId]: '' }))
+    showToast('✅ 返信しました')
   }
 
   const sorted = [...list].sort((a, b) => (Number(b.pinned) - Number(a.pinned)) || b.date.localeCompare(a.date))
@@ -35,19 +53,23 @@ export default function NewsPage() {
     boxBody: { padding: 20 },
     label: { fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase' as const, color: 'var(--muted)', display: 'block', marginBottom: 6 },
     input: { background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 12px', color: 'var(--text)', fontSize: 13, outline: 'none', fontFamily: 'inherit', width: '100%' },
-    btn: { background: 'var(--accent)', color: '#0f1117', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
+    btn: { background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' },
     btnGhost: { background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 14px', fontSize: 12, cursor: 'pointer' },
     delBtn: { background: '#FBE0DE', color: 'var(--danger)', border: '1px solid var(--danger)', borderRadius: 6, padding: '3px 10px', fontSize: 11, cursor: 'pointer' },
+  }
+
+  function roleColor(r: string) {
+    return r === '生産者' ? 'var(--accent)' : r === '販売者' ? 'var(--accent2)' : r === '組合管理者' ? 'var(--warn)' : 'var(--muted)'
   }
 
   return (
     <AppShell>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h2 style={{ fontSize: 15, fontWeight: 700 }}>📢 お知らせ・情報共有</h2>
-        <button style={s.btnGhost} onClick={() => setComposing(!composing)}>{composing ? '× 閉じる' : '＋ 新規投稿'}</button>
+        {isAdmin && <button style={s.btnGhost} onClick={() => setComposing(!composing)}>{composing ? '× 閉じる' : '＋ 新規通達'}</button>}
       </div>
 
-      {composing && (
+      {isAdmin && composing && (
         <div style={s.box}>
           <div style={s.boxHead}>新しいお知らせ</div>
           <div style={s.boxBody}>
@@ -57,7 +79,7 @@ export default function NewsPage() {
             </div>
             <div style={{ marginBottom: 12 }}>
               <label style={s.label}>本文</label>
-              <textarea style={{ ...s.input, minHeight: 100, resize: 'vertical' }} value={form.body} onChange={e => setForm({ ...form, body: e.target.value })} placeholder="組合員へ共有する内容を入力" />
+              <textarea style={{ ...s.input, minHeight: 100, resize: 'vertical' }} value={form.body} onChange={e => setForm({ ...form, body: e.target.value })} placeholder="組合員・販売会社へ共有する内容を入力" />
             </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 16, cursor: 'pointer' }}>
               <input type="checkbox" checked={form.pinned} onChange={e => setForm({ ...form, pinned: e.target.checked })} /> 📌 上部に固定する
@@ -69,18 +91,55 @@ export default function NewsPage() {
 
       {sorted.length === 0 ? (
         <div style={{ ...s.box, padding: 40, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>まだお知らせはありません</div>
-      ) : sorted.map(a => (
-        <div key={a.id} style={s.box}>
-          <div style={s.boxHead}>
-            <span>{a.pinned && '📌 '}{a.title}</span>
-            <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)' }}>{a.date}</span>
-              <button style={s.delBtn} onClick={() => { if (confirm('このお知らせを削除しますか？')) api('remove_announcement', { id: a.id }) }}>削除</button>
-            </span>
+      ) : sorted.map(a => {
+        const replies = a.replies || []
+        return (
+          <div key={a.id} style={s.box}>
+            <div style={s.boxHead}>
+              <span>{a.pinned && '📌 '}{a.title}</span>
+              <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--muted)' }}>{a.date}</span>
+                {isAdmin && <button style={s.delBtn} onClick={() => { if (confirm('このお知らせを削除しますか？')) api('remove_announcement', { id: a.id }) }}>削除</button>}
+              </span>
+            </div>
+            <div style={s.boxBody}>
+              {a.body && <div style={{ fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap', marginBottom: 16 }}>{a.body}</div>}
+
+              {/* 返信スレッド */}
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 10 }}>💬 返信 {replies.length > 0 && `(${replies.length})`}</div>
+                {replies.map(r => (
+                  <div key={r.id} style={{ background: 'var(--surface2)', borderRadius: 8, padding: '8px 12px', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 600 }}>
+                        <span style={{ color: roleColor(r.role) }}>●</span> {r.author}
+                        {r.role && <span style={{ fontSize: 10, color: 'var(--muted)', marginLeft: 6 }}>{r.role}</span>}
+                      </span>
+                      <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--muted)' }}>{r.date}</span>
+                        {(isAdmin || r.author === me.name) && <button onClick={() => api('remove_reply', { announcementId: a.id, replyId: r.id })} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}>×</button>}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{r.body}</div>
+                  </div>
+                ))}
+                {me.role && me.role !== 'guest' && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    <input
+                      style={s.input}
+                      value={replyDrafts[a.id] || ''}
+                      onChange={e => setReplyDrafts(prev => ({ ...prev, [a.id]: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter') sendReply(a.id) }}
+                      placeholder="返信を入力..."
+                    />
+                    <button style={s.btn} onClick={() => sendReply(a.id)}>返信</button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-          {a.body && <div style={{ ...s.boxBody, fontSize: 13, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{a.body}</div>}
-        </div>
-      ))}
+        )
+      })}
       {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, background: 'var(--surface2)', border: '1px solid var(--accent)', borderRadius: 10, padding: '14px 20px', fontSize: 13, color: 'var(--accent)', zIndex: 9999 }}>{toast}</div>}
     </AppShell>
   )

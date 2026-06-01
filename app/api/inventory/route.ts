@@ -130,6 +130,27 @@ export async function POST(req: NextRequest) {
       await kvSet(ORG, 'announcements', list.filter((a: any) => a.id !== payload.id))
       return NextResponse.json({ ok: true })
     }
+    case 'add_reply': {
+      if (role === 'guest') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
+      if (!payload.body) return NextResponse.json({ error: '本文が空です' }, { status: 400 })
+      const author = session.user?.name || session.user?.email || '匿名'
+      const reply = { id: uid(), author, role, body: payload.body, date: new Date().toISOString().slice(0, 10) }
+      const list: any[] = await kvGet(ORG, 'announcements') || []
+      await kvSet(ORG, 'announcements', list.map((a: any) =>
+        a.id === payload.announcementId ? { ...a, replies: [...(a.replies || []), reply] } : a))
+      return NextResponse.json({ ok: true })
+    }
+    case 'remove_reply': {
+      const list: any[] = await kvGet(ORG, 'announcements') || []
+      const author = session.user?.name || session.user?.email || ''
+      await kvSet(ORG, 'announcements', list.map((a: any) => {
+        if (a.id !== payload.announcementId) return a
+        const replies = (a.replies || []).filter((r: any) =>
+          r.id !== payload.replyId || (role !== '組合管理者' && r.author !== author))
+        return { ...a, replies }
+      }))
+      return NextResponse.json({ ok: true })
+    }
     case 'add_product': {
       const list: any[] = await kvGet(ORG, 'products') || []
       if (!list.find((p: any) => p.name === payload.name)) list.push({ name: payload.name, aliases: payload.aliases || '' })
