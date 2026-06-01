@@ -1,11 +1,12 @@
 'use client'
 import { useSession, signIn } from 'next-auth/react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 export default function Home() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const [logoOk, setLogoOk] = useState(true)
 
   useEffect(() => {
     if (status === 'authenticated') router.push('/dashboard')
@@ -25,11 +26,14 @@ export default function Home() {
       minHeight:'100vh', flexDirection:'column', gap:'32px', padding:'24px'
     }}>
       <div style={{ textAlign:'center' }}>
-        <div style={{
-          width:72, height:72, background:'linear-gradient(135deg,#5DA63E,#2BA6C4)',
-          borderRadius:20, display:'flex', alignItems:'center', justifyContent:'center',
-          fontSize:36, margin:'0 auto 20px', boxShadow:'0 4px 16px rgba(61,58,52,.12)'
-        }}>🌾</div>
+        {logoOk
+          ? <img src="/logo.png" alt="いわくにアグリパートナーズ" onError={() => setLogoOk(false)}
+              style={{ width:96, height:96, objectFit:'contain', margin:'0 auto 20px', display:'block' }} />
+          : <div style={{
+              width:72, height:72, background:'linear-gradient(135deg,#5DA63E,#2BA6C4)',
+              borderRadius:20, display:'flex', alignItems:'center', justifyContent:'center',
+              fontSize:36, margin:'0 auto 20px', boxShadow:'0 4px 16px rgba(61,58,52,.12)'
+            }}>🌾</div>}
         <h1 style={{ fontSize:26, fontWeight:700, marginBottom:8 }}>いわくにアグリパートナーズ</h1>
         <p style={{ color:'var(--muted)', fontSize:14, lineHeight:1.7 }}>
           産直ポータル<br />生産者・販売会社・組合をつなぐ納品管理

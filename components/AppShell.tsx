@@ -1,6 +1,7 @@
 'use client'
 import { useSession, signOut } from 'next-auth/react'
 import { useRouter, usePathname } from 'next/navigation'
+import { useState } from 'react'
 import { useEffect } from 'react'
 import Link from 'next/link'
 import styles from './shell.module.css'
@@ -31,6 +32,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession()
   const router = useRouter()
   const pathname = usePathname()
+  const [logoOk, setLogoOk] = useState(true)
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/')
@@ -46,7 +48,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <div className={styles.shell}>
       <header className={styles.header}>
         <div className={styles.logo}>
-          <div className={styles.logoIcon}>🌾</div>
+          {logoOk
+            ? <img src="/logo.png" alt="いわくにアグリパートナーズ" className={styles.logoImg} onError={() => setLogoOk(false)} />
+            : <div className={styles.logoIcon}>🌾</div>}
           <div>
             <div className={styles.logoText}>いわくにアグリパートナーズ 産直ポータル</div>
             <div className={styles.logoSub}>IWAKUNI AGRI PARTNERS</div>
