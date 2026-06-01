@@ -52,6 +52,12 @@ function adminEmails(): string[] {
 
 // ID/パスワードでの認証
 export async function authenticateCredentials(loginId: string, password: string) {
+  // 環境変数による初期管理者（マスタが空でもログイン可能・ブートストラップ用）
+  const bootId = process.env.BOOTSTRAP_ADMIN_ID
+  const bootPw = process.env.BOOTSTRAP_ADMIN_PASSWORD
+  if (bootId && bootPw && loginId === bootId && password === bootPw) {
+    return { id: 'bootstrap-admin', name: '組合管理者', role: '組合管理者' as Role, loginId: bootId }
+  }
   const users = await getUsers()
   const u = users.find(x => x.loginId && x.loginId === loginId)
   if (!u || !verifyPassword(password, u.passwordHash)) return null
