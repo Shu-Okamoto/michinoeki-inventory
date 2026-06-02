@@ -31,7 +31,7 @@ function initRecordTables(): Promise<void> {
     initPromise = withRetry(async () => {
       const sql = getSql()
       await sql`
-        CREATE TABLE IF NOT EXISTS michinoeki_sales (
+        CREATE TABLE IF NOT EXISTS iwkagri_sales (
           id TEXT PRIMARY KEY,
           org TEXT NOT NULL,
           date TEXT NOT NULL DEFAULT '',
@@ -44,10 +44,10 @@ function initRecordTables(): Promise<void> {
           created_at TIMESTAMP DEFAULT NOW()
         )
       `
-      await sql`CREATE INDEX IF NOT EXISTS idx_michinoeki_sales_org_date ON michinoeki_sales (org, date)`
-      await sql`CREATE INDEX IF NOT EXISTS idx_michinoeki_sales_org_producer ON michinoeki_sales (org, producer)`
+      await sql`CREATE INDEX IF NOT EXISTS idx_iwkagri_sales_org_date ON iwkagri_sales (org, date)`
+      await sql`CREATE INDEX IF NOT EXISTS idx_iwkagri_sales_org_producer ON iwkagri_sales (org, producer)`
       await sql`
-        CREATE TABLE IF NOT EXISTS michinoeki_shipments (
+        CREATE TABLE IF NOT EXISTS iwkagri_shipments (
           id TEXT PRIMARY KEY,
           org TEXT NOT NULL,
           date TEXT,
@@ -58,7 +58,7 @@ function initRecordTables(): Promise<void> {
           created_at TIMESTAMP DEFAULT NOW()
         )
       `
-      await sql`CREATE INDEX IF NOT EXISTS idx_michinoeki_shipments_org ON michinoeki_shipments (org)`
+      await sql`CREATE INDEX IF NOT EXISTS idx_iwkagri_shipments_org ON iwkagri_shipments (org)`
     }).catch(err => { initPromise = null; throw err })
   }
   return initPromise
@@ -75,7 +75,7 @@ async function rawInsertSales(org: string, recs: SaleRecord[]): Promise<void> {
   await withRetry(async () => {
     const sql = getSql()
     await sql`
-      INSERT INTO michinoeki_sales ${sql(rows, 'id', 'org', 'date', 'location', 'producer', 'product', 'qty', 'method', 'message_id')}
+      INSERT INTO iwkagri_sales ${sql(rows, 'id', 'org', 'date', 'location', 'producer', 'product', 'qty', 'method', 'message_id')}
       ON CONFLICT (id) DO NOTHING
     `
   })
@@ -85,7 +85,7 @@ async function rawInsertShipment(org: string, rec: ShipmentRecord): Promise<void
   await withRetry(async () => {
     const sql = getSql()
     await sql`
-      INSERT INTO michinoeki_shipments (id, org, date, location, producer, product, qty)
+      INSERT INTO iwkagri_shipments (id, org, date, location, producer, product, qty)
       VALUES (${rec.id}, ${org}, ${rec.date ?? null}, ${rec.location || ''}, ${rec.producer || ''}, ${rec.product || ''}, ${Number(rec.qty) || 0})
       ON CONFLICT (id) DO NOTHING
     `
@@ -128,7 +128,7 @@ export async function listSales(org: string): Promise<SaleRecord[]> {
   await ensureMigrated(org)
   return withRetry(async () => {
     const sql = getSql()
-    const rows = await sql`SELECT * FROM michinoeki_sales WHERE org = ${org} ORDER BY created_at ASC, id ASC`
+    const rows = await sql`SELECT * FROM iwkagri_sales WHERE org = ${org} ORDER BY created_at ASC, id ASC`
     return rows.map(rowToSale)
   })
 }
@@ -137,7 +137,7 @@ export async function listSalesByDate(org: string, date: string): Promise<SaleRe
   await ensureMigrated(org)
   return withRetry(async () => {
     const sql = getSql()
-    const rows = await sql`SELECT * FROM michinoeki_sales WHERE org = ${org} AND date = ${date} ORDER BY created_at ASC, id ASC`
+    const rows = await sql`SELECT * FROM iwkagri_sales WHERE org = ${org} AND date = ${date} ORDER BY created_at ASC, id ASC`
     return rows.map(rowToSale)
   })
 }
@@ -151,7 +151,7 @@ export async function deleteSale(org: string, id: string): Promise<void> {
   await ensureMigrated(org)
   await withRetry(async () => {
     const sql = getSql()
-    await sql`DELETE FROM michinoeki_sales WHERE org = ${org} AND id = ${id}`
+    await sql`DELETE FROM iwkagri_sales WHERE org = ${org} AND id = ${id}`
   })
 }
 
@@ -159,7 +159,7 @@ export async function clearSales(org: string): Promise<void> {
   await ensureMigrated(org)
   await withRetry(async () => {
     const sql = getSql()
-    await sql`DELETE FROM michinoeki_sales WHERE org = ${org}`
+    await sql`DELETE FROM iwkagri_sales WHERE org = ${org}`
   })
 }
 
@@ -168,7 +168,7 @@ export async function listShipments(org: string): Promise<ShipmentRecord[]> {
   await ensureMigrated(org)
   return withRetry(async () => {
     const sql = getSql()
-    const rows = await sql`SELECT * FROM michinoeki_shipments WHERE org = ${org} ORDER BY created_at ASC, id ASC`
+    const rows = await sql`SELECT * FROM iwkagri_shipments WHERE org = ${org} ORDER BY created_at ASC, id ASC`
     return rows.map((r: any) => ({ id: r.id, date: r.date ?? undefined, location: r.location, producer: r.producer, product: r.product, qty: Number(r.qty) }))
   })
 }
@@ -182,6 +182,6 @@ export async function deleteShipment(org: string, id: string): Promise<void> {
   await ensureMigrated(org)
   await withRetry(async () => {
     const sql = getSql()
-    await sql`DELETE FROM michinoeki_shipments WHERE org = ${org} AND id = ${id}`
+    await sql`DELETE FROM iwkagri_shipments WHERE org = ${org} AND id = ${id}`
   })
 }
