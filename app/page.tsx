@@ -27,7 +27,10 @@ export default function Home() {
     else router.push('/dashboard')
   }
 
-  if (status === 'loading') return (
+  // 認証済みならダッシュボードへ遷移するまでスピナー表示。
+  // 未認証・loading中はログインフォームを表示し続ける（/api/auth/session の
+  // 取得が遅延・失敗してもログイン窓が消えないようにする安全網）。
+  if (status === 'authenticated') return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', flexDirection:'column', gap:'16px' }}>
       <div style={{ width:40, height:40, border:'3px solid var(--border)', borderTopColor:'var(--accent)', borderRadius:'50%', animation:'spin 0.7s linear infinite' }} />
       <p style={{ color:'var(--muted)', fontSize:14 }}>読み込み中...</p>
