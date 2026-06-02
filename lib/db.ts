@@ -38,7 +38,7 @@ export function initDB(): Promise<void> {
     initPromise = withRetry(async () => {
       const sql = getSql()
       await sql`
-        CREATE TABLE IF NOT EXISTS kv_store (
+        CREATE TABLE IF NOT EXISTS michinoeki_kv_store (
           user_id TEXT NOT NULL,
           key TEXT NOT NULL,
           value JSONB NOT NULL,
@@ -61,7 +61,7 @@ export async function kvGet<T>(userId: string, key: string): Promise<T | null> {
   return withRetry(async () => {
     const sql = getSql()
     const rows = await sql`
-      SELECT value FROM kv_store WHERE user_id = ${userId} AND key = ${key}
+      SELECT value FROM michinoeki_kv_store WHERE user_id = ${userId} AND key = ${key}
     `
     if (rows.length === 0) return null
     return rows[0].value as T
@@ -74,7 +74,7 @@ export async function kvSet(userId: string, key: string, value: any): Promise<vo
   await withRetry(async () => {
     const sql = getSql()
     await sql`
-      INSERT INTO kv_store (user_id, key, value, updated_at)
+      INSERT INTO michinoeki_kv_store (user_id, key, value, updated_at)
       VALUES (${userId}, ${key}, ${sql.json(value)}, NOW())
       ON CONFLICT (user_id, key)
       DO UPDATE SET value = ${sql.json(value)}, updated_at = NOW()
