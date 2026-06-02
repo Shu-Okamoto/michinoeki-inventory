@@ -8,6 +8,18 @@ import { sendSalesDigest } from '@/lib/salesmail'
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2) }
 
+// 商品マスタの単価を引く（売上/出荷登録時に単価をスナップショットするため）
+async function productPriceMap(): Promise<Record<string, number>> {
+  const products: any[] = await kvGet(ORG, 'products') || []
+  const map: Record<string, number> = {}
+  for (const p of products) map[p.name] = Number(p.unitPrice) || 0
+  return map
+}
+async function productPrice(name: string): Promise<number> {
+  const map = await productPriceMap()
+  return map[name] || 0
+}
+
 const KEYS = ['locations', 'products', 'shipments', 'sales', 'gmail_settings', 'producers', 'announcements', 'settings']
 
 // 旧（ログインアカウントごと）データを共有領域へ一度だけ移行する
@@ -155,7 +167,15 @@ export async function POST(req: NextRequest) {
     }
     case 'add_product': {
       const list: any[] = await kvGet(ORG, 'products') || []
-      if (!list.find((p: any) => p.name === payload.name)) list.push({ name: payload.name, aliases: payload.aliases || '' })
+      const existing = list.find((p: any) => p.name === payload.name)
+      const unitPrice = Number(payload.unitPrice) || 0
+      if (existing) {
+        // 既存商品は別名・単価を更新（単価編集を兼ねる）
+        if (payload.aliases !== undefined) existing.aliases = payload.aliases || ''
+        if (payload.unitPrice !== undefined) existing.unitPrice = unitPrice
+      } else {
+        list.push({ name: payload.name, aliases: payload.aliases || '', unitPrice })
+      }
       await kvSet(ORG, 'products', list)
       return NextResponse.json({ ok: true })
     }
@@ -167,7 +187,8 @@ export async function POST(req: NextRequest) {
     case 'add_shipment': {
       // 納品＝生産者または管理者
       if (role === '販売者') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
-      await addShipment(ORG, { id: uid(), date: payload.date, location: payload.location, producer: payload.producer || '', product: payload.product, qty: Number(payload.qty) || 0 })
+      const unitPrice = payload.unitPrice !== undefined ? Number(payload.unitPrice) || 0 : await productPrice(payload.product)
+      await addShipment(ORG, { id: uid(), date: payload.date, location: payload.location, producer: payload.producer || '', product: payload.product, qty: Number(payload.qty) || 0, unitPrice })
       return NextResponse.json({ ok: true })
     }
     case 'delete_shipment': {
@@ -178,9 +199,11 @@ export async function POST(req: NextRequest) {
     case 'add_sales': {
       // レジ通過数＝販売者または管理者
       if (role === '生産者') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
+      const priceMap = await productPriceMap()
       const recs = (payload.items || []).map((item: any) => ({
         id: uid(), date: payload.date, location: payload.location, producer: payload.producer || '',
         product: item.product, qty: Number(item.qty) || 0, method: payload.method || '手動',
+        unitPrice: item.unitPrice !== undefined ? Number(item.unitPrice) || 0 : (priceMap[item.product] || 0),
       }))
       await addSales(ORG, recs)
       return NextResponse.json({ ok: true })

@@ -60,8 +60,13 @@ export default function SalesPage() {
     ? Array.from(new Set((data.shipments || []).filter((x: any) => x.producer === producer).map((x: any) => x.product)))
     : []
 
+  // 商品マスタの単価
+  const priceOf = (name: string): number => Number((data.products || []).find((p: any) => p.name === name)?.unitPrice) || 0
+  const yen = (n: number) => '¥' + (n || 0).toLocaleString()
+
   // 今日の売上サマリー
   const todaySales = data.sales?.filter((s: any) => s.date === today()) || []
+  const entriesTotal = entries.reduce((a, e) => a + (e.product && e.qty ? priceOf(e.product) * Number(e.qty) : 0), 0)
 
   const s = {
     label: { fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase' as const, color: 'var(--muted)', display: 'block', marginBottom: 6 },
@@ -106,16 +111,17 @@ export default function SalesPage() {
             <p style={{ fontSize: 13, color: 'var(--warn)', marginBottom: 12 }}>⚠️ この生産者の納品実績がありません。先に「みかわ納品数入力」で納品を登録してください。</p>
           ) : (
           <div style={{ marginBottom: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 36px', gap: 8, marginBottom: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 110px 36px', gap: 8, marginBottom: 8 }}>
               <span style={{ ...s.label, marginBottom: 0 }}>商品名（{producer} の納品商品）</span>
               <span style={{ ...s.label, marginBottom: 0 }}>レジ通過数</span>
+              <span style={{ ...s.label, marginBottom: 0 }}>金額</span>
               <span />
             </div>
             {entries.map((entry, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 36px', gap: 8, marginBottom: 8 }}>
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 110px 36px', gap: 8, marginBottom: 8, alignItems: 'center' }}>
                 <select style={s.select} value={entry.product} onChange={e => updateEntry(i, 'product', e.target.value)}>
                   <option value="">商品を選択</option>
-                  {producerProducts.map((name: string) => <option key={name} value={name}>{name}</option>)}
+                  {producerProducts.map((name: string) => <option key={name} value={name}>{name}{priceOf(name) > 0 ? `（${yen(priceOf(name))}）` : ''}</option>)}
                 </select>
                 <input
                   type="number" min="1" placeholder="個数"
@@ -123,12 +129,20 @@ export default function SalesPage() {
                   value={entry.qty}
                   onChange={e => updateEntry(i, 'qty', e.target.value)}
                 />
+                <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 13, color: 'var(--accent)', textAlign: 'right' }}>
+                  {entry.product && entry.qty ? yen(priceOf(entry.product) * Number(entry.qty)) : '—'}
+                </span>
                 <button
                   onClick={() => removeRow(i)}
                   style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--muted)', fontSize: 16, cursor: 'pointer' }}
                 >×</button>
               </div>
             ))}
+            {entriesTotal > 0 && (
+              <div style={{ textAlign: 'right', fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>
+                合計金額: <span style={{ fontFamily: 'Space Mono, monospace', color: 'var(--accent)', fontWeight: 700 }}>{yen(entriesTotal)}</span>
+              </div>
+            )}
           </div>
           )}
 
@@ -160,7 +174,7 @@ export default function SalesPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--surface2)' }}>
-                {['販売先', '商品', 'レジ通過数'].map(h => (
+                {['販売先', '商品', 'レジ通過数', '金額'].map(h => (
                   <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--muted)' }}>{h}</th>
                 ))}
               </tr>
@@ -171,6 +185,7 @@ export default function SalesPage() {
                   <td style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', color: 'var(--accent2)' }}>{s2.location}</td>
                   <td style={{ padding: '10px 16px', borderTop: '1px solid var(--border)' }}>{s2.product}</td>
                   <td style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', fontFamily: 'Space Mono, monospace', color: 'var(--accent)', fontWeight: 700 }}>{s2.qty}個</td>
+                  <td style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', fontFamily: 'Space Mono, monospace', color: 'var(--muted)' }}>{Number(s2.amount) > 0 ? yen(s2.amount) : '—'}</td>
                 </tr>
               ))}
             </tbody>
