@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react'
 
 export default function SettingsPage() {
   const [data, setData] = useState<any>({ locations:[], products:[], settings:{} })
-  const [newLoc, setNewLoc] = useState(''); const [newProd, setNewProd] = useState(''); const [newAlias, setNewAlias] = useState('')
+  const [newLoc, setNewLoc] = useState(''); const [newProd, setNewProd] = useState(''); const [newAlias, setNewAlias] = useState(''); const [newPrice, setNewPrice] = useState('')
   const [kyohaiUrl, setKyohaiUrl] = useState('')
+  const [commissionRate, setCommissionRate] = useState('')
+  const [priceEdits, setPriceEdits] = useState<Record<string, string>>({})
   const [mail, setMail] = useState<any>({ enabled: false, fromEmail: '', sendTime: '17:00', subject: '', template: '' })
   const [sending, setSending] = useState(false)
   const [toast, setToast] = useState('')
@@ -14,6 +16,7 @@ export default function SettingsPage() {
   function refresh() { fetch('/api/inventory').then(r=>r.json()).then(d=>{
     setData(d)
     setKyohaiUrl(d.settings?.kyohaiUrl || 'https://coop-delivery.vercel.app/')
+    setCommissionRate(String(d.settings?.commissionRate ?? ''))
     setMail({
       enabled: d.settings?.salesMail?.enabled || false,
       fromEmail: d.settings?.salesMail?.fromEmail || '',
@@ -77,9 +80,10 @@ export default function SettingsPage() {
           <div style={{display:'flex',gap:8,marginBottom:8,flexWrap:'wrap' as any}}>
             <input style={s.input} value={newProd} onChange={e=>setNewProd(e.target.value)} placeholder="商品名（例: トマト大袋）" />
             <input style={s.input} value={newAlias} onChange={e=>setNewAlias(e.target.value)} placeholder="別名・キーワード（例: トマト,大玉）" />
-            <button style={s.btn} onClick={async()=>{if(!newProd)return;await api('add_product',{name:newProd,aliases:newAlias});setNewProd('');setNewAlias('');showToast('✅ 追加しました')}}>＋ 追加</button>
+            <input style={{...s.input,maxWidth:120,flex:'none'}} type="number" min="0" value={newPrice} onChange={e=>setNewPrice(e.target.value)} placeholder="単価(円)" />
+            <button style={s.btn} onClick={async()=>{if(!newProd)return;await api('add_product',{name:newProd,aliases:newAlias,unitPrice:Number(newPrice)||0});setNewProd('');setNewAlias('');setNewPrice('');showToast('✅ 追加しました')}}>＋ 追加</button>
           </div>
-          <p style={{fontSize:11,color:'var(--muted)',marginBottom:12}}>別名はメール解析で商品を特定するキーワードです（カンマ区切り）</p>
+          <p style={{fontSize:11,color:'var(--muted)',marginBottom:12}}>別名はメール解析で商品を特定するキーワードです（カンマ区切り）。単価は売上・出荷の金額計算に使われます。</p>
           {data.products.length===0
             ? <p style={{fontSize:12,color:'var(--muted)'}}>まだ登録がありません</p>
             : data.products.map((p:any) => (
@@ -88,6 +92,13 @@ export default function SettingsPage() {
                   <div style={{fontSize:13,fontWeight:500}}>{p.name}</div>
                   {p.aliases&&<div style={{fontSize:11,color:'var(--muted)'}}>別名: {p.aliases}</div>}
                 </div>
+                <input
+                  style={{...s.input,maxWidth:96,flex:'none',padding:'5px 8px'}} type="number" min="0"
+                  value={priceEdits[p.name] ?? String(p.unitPrice ?? 0)}
+                  onChange={e=>setPriceEdits({...priceEdits,[p.name]:e.target.value})}
+                />
+                <span style={{fontSize:11,color:'var(--muted)'}}>円</span>
+                <button style={{...s.btn,padding:'5px 10px',fontSize:11}} onClick={async()=>{await api('add_product',{name:p.name,unitPrice:Number(priceEdits[p.name] ?? p.unitPrice ?? 0)||0});showToast('💾 単価を保存しました')}}>保存</button>
                 <button style={s.delBtn} onClick={()=>api('remove_product',{name:p.name})}>削除</button>
               </div>
             ))
@@ -102,6 +113,18 @@ export default function SettingsPage() {
             <button style={s.btn} onClick={async()=>{await api('save_settings',{kyohaiUrl});showToast('✅ 保存しました')}}>💾 保存</button>
           </div>
           <p style={{fontSize:11,color:'var(--muted)',marginTop:8}}>「共配システム」メニューからこのURLを開けるようになります</p>
+        </div>
+      </div>
+
+      <div style={s.box}>
+        <div style={s.boxHead}>💴 手数料率（精算用）</div>
+        <div style={s.boxBody}>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <input style={{...s.input,maxWidth:120,flex:'none'}} type="number" min="0" max="100" step="0.1" value={commissionRate} onChange={e=>setCommissionRate(e.target.value)} placeholder="例: 15" />
+            <span style={{fontSize:13,color:'var(--muted)'}}>%</span>
+            <button style={s.btn} onClick={async()=>{await api('save_settings',{commissionRate:Number(commissionRate)||0});showToast('✅ 保存しました')}}>💾 保存</button>
+          </div>
+          <p style={{fontSize:11,color:'var(--muted)',marginTop:8}}>売上金額からこの率を差し引いた額が生産者への支払額（精算額）になります。売上メールの {'{net}'} に反映されます。</p>
         </div>
       </div>
 
@@ -129,7 +152,7 @@ export default function SettingsPage() {
           <div style={{marginBottom:12}}>
             <label style={{fontSize:11,fontWeight:700,color:'var(--muted)',display:'block',marginBottom:6}}>本文テンプレート</label>
             <textarea style={{...s.input,width:'100%',minHeight:140,resize:'vertical',fontFamily:'inherit'}} value={mail.template} onChange={e=>setMail({...mail,template:e.target.value})} placeholder="空欄の場合は既定のテンプレートを使用します" />
-            <p style={{fontSize:11,color:'var(--muted)',marginTop:6,lineHeight:1.7}}>使用できる差込: {'{producer}'} 生産者名 / {'{date}'} 日付 / {'{items}'} 品目明細 / {'{total}'} 合計点数 / {'{company}'} 所属</p>
+            <p style={{fontSize:11,color:'var(--muted)',marginTop:6,lineHeight:1.7}}>使用できる差込: {'{producer}'} 生産者名 / {'{date}'} 日付 / {'{items}'} 品目明細 / {'{total}'} 合計点数 / {'{company}'} 所属 / {'{amount}'} 売上金額 / {'{commission}'} 手数料 / {'{net}'} 精算額 / {'{rate}'} 手数料率</p>
           </div>
           <div style={{display:'flex',gap:10,flexWrap:'wrap' as any}}>
             <button style={s.btn} onClick={async()=>{await api('save_settings',{salesMail:{enabled:mail.enabled,fromEmail:mail.fromEmail,sendTime:mail.sendTime,subject:mail.subject,template:mail.template}});showToast('✅ 保存しました')}}>💾 保存</button>

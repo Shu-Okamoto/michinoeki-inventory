@@ -115,10 +115,13 @@ export async function POST(req: NextRequest) {
 
   try {
     
+    const products: any[] = await kvGet(userId, 'products') || []
+    const priceMap: Record<string, number> = {}
+    for (const p of products) priceMap[p.name] = Number(p.unitPrice) || 0
     const recs = (items || []).map((item: any) => ({
       id: Date.now().toString(36) + Math.random().toString(36).slice(2),
       date, location, producer: '', product: item.product, qty: Number(item.qty) || 0,
-      method: 'Gmail自動解析', messageId,
+      method: 'Gmail自動解析', messageId, unitPrice: priceMap[item.product] || 0,
     }))
     await addSales(userId, recs)
 

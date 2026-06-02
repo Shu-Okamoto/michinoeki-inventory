@@ -42,7 +42,9 @@ export default function DashboardPage() {
 
   const rows = getInventory()
   const todayStr = new Date().toISOString().slice(0, 10)
-  const todaySold = data?.sales?.filter((s: any) => s.date === todayStr).reduce((a: number, b: any) => a + Number(b.qty), 0) || 0
+  const todaySalesList = data?.sales?.filter((s: any) => s.date === todayStr) || []
+  const todaySold = todaySalesList.reduce((a: number, b: any) => a + Number(b.qty), 0)
+  const todaySoldAmount = todaySalesList.reduce((a: number, b: any) => a + Number(b.amount || 0), 0)
   const totalStock = rows.reduce((a, b) => a + Math.max(0, b.shipped - b.sold), 0)
   const lowCount = rows.filter(r => { const s = r.shipped - r.sold; return s > 0 && s <= 5 }).length
   const emptyCount = rows.filter(r => r.shipped - r.sold <= 0).length
@@ -52,6 +54,7 @@ export default function DashboardPage() {
       <div className={styles.summaryGrid}>
         <SummaryCard color="green" label="総在庫（全店舗）" value={totalStock} sub="個" />
         <SummaryCard color="blue" label="本日の販売数" value={todaySold} sub="個（解析済み）" />
+        {todaySoldAmount > 0 && <SummaryCard color="blue" label="本日の売上金額" value={'¥' + todaySoldAmount.toLocaleString()} sub="円" />}
         <SummaryCard color="orange" label="残りわずか" value={lowCount} sub="種類（5個以下）" />
         <SummaryCard color="red" label="在庫切れ" value={emptyCount} sub="種類" />
       </div>
@@ -107,7 +110,7 @@ export default function DashboardPage() {
   )
 }
 
-function SummaryCard({ color, label, value, sub }: { color:string; label:string; value:number; sub:string }) {
+function SummaryCard({ color, label, value, sub }: { color:string; label:string; value:number|string; sub:string }) {
   return (
     <div className={`${styles.card} ${styles['card-'+color]}`}>
       <div className={styles.cardLabel}>{label}</div>

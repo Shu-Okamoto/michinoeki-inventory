@@ -53,9 +53,22 @@ export async function sendSalesDigest(dateStr?: string): Promise<{ date: string;
     const to = master?.email || ''
     if (!to) { skipped++; results.push({ producer: producerName, to: '', result: { ok: false, skipped: true, error: 'メール未登録' } }); continue }
 
-    const lines = items.map(i => `・${i.product}　${i.qty} 点`).join('\n')
+    const hasPrice = items.some(i => Number(i.unitPrice || 0) > 0)
+    const lines = items.map(i => {
+      const amt = Number(i.amount || 0)
+      return hasPrice
+        ? `・${i.product}　${i.qty} 点　¥${amt.toLocaleString()}`
+        : `・${i.product}　${i.qty} 点`
+    }).join('\n')
     const total = items.reduce((a, b) => a + Number(b.qty || 0), 0)
-    const vars = { date, producer: producerName, company: master?.company || '', items: lines, total, count: items.length }
+    const totalAmount = items.reduce((a, b) => a + Number(b.amount || 0), 0)
+    const rate = Number(settingsRaw?.commissionRate) || 0
+    const commission = Math.floor(totalAmount * rate / 100)
+    const net = totalAmount - commission
+    const vars = {
+      date, producer: producerName, company: master?.company || '', items: lines, total, count: items.length,
+      amount: totalAmount.toLocaleString(), commission: commission.toLocaleString(), net: net.toLocaleString(), rate,
+    }
     const body = renderTemplate(template, vars)
     const subject = renderTemplate(subjectTpl, vars)
 

@@ -13,6 +13,8 @@ export interface SaleRecord {
   qty: number
   method: string
   messageId?: string
+  unitPrice?: number   // 単価（円, snapshot）
+  amount?: number      // 金額 = qty × unitPrice（読み取り時に算出）
 }
 
 export interface ShipmentRecord {
@@ -22,6 +24,8 @@ export interface ShipmentRecord {
   producer: string
   product: string
   qty: number
+  unitPrice?: number   // 単価（円, snapshot）
+  amount?: number      // 金額 = qty × unitPrice（読み取り時に算出）
 }
 
 // テーブル/インデックス初期化はプロセス内で1回だけ
@@ -41,6 +45,7 @@ function initRecordTables(): Promise<void> {
           qty INTEGER NOT NULL DEFAULT 0,
           method TEXT NOT NULL DEFAULT '手動',
           message_id TEXT,
+          unit_price INTEGER NOT NULL DEFAULT 0,
           created_at TIMESTAMP DEFAULT NOW()
         )
       `
@@ -55,10 +60,14 @@ function initRecordTables(): Promise<void> {
           producer TEXT NOT NULL DEFAULT '',
           product TEXT NOT NULL DEFAULT '',
           qty INTEGER NOT NULL DEFAULT 0,
+          unit_price INTEGER NOT NULL DEFAULT 0,
           created_at TIMESTAMP DEFAULT NOW()
         )
       `
       await sql`CREATE INDEX IF NOT EXISTS idx_iwkagri_shipments_org ON iwkagri_shipments (org)`
+      // 既存テーブルへの後方互換: 単価列が無ければ追加
+      await sql`ALTER TABLE iwkagri_sales ADD COLUMN IF NOT EXISTS unit_price INTEGER NOT NULL DEFAULT 0`
+      await sql`ALTER TABLE iwkagri_shipments ADD COLUMN IF NOT EXISTS unit_price INTEGER NOT NULL DEFAULT 0`
     }).catch(err => { initPromise = null; throw err })
   }
   return initPromise
@@ -71,11 +80,12 @@ async function rawInsertSales(org: string, recs: SaleRecord[]): Promise<void> {
   const rows = recs.map(r => ({
     id: r.id, org, date: r.date || '', location: r.location || '', producer: r.producer || '',
     product: r.product || '', qty: Number(r.qty) || 0, method: r.method || '手動', message_id: r.messageId ?? null,
+    unit_price: Number(r.unitPrice) || 0,
   }))
   await withRetry(async () => {
     const sql = getSql()
     await sql`
-      INSERT INTO iwkagri_sales ${sql(rows, 'id', 'org', 'date', 'location', 'producer', 'product', 'qty', 'method', 'message_id')}
+      INSERT INTO iwkagri_sales ${sql(rows, 'id', 'org', 'date', 'location', 'producer', 'product', 'qty', 'method', 'message_id', 'unit_price')}
       ON CONFLICT (id) DO NOTHING
     `
   })
@@ -85,8 +95,8 @@ async function rawInsertShipment(org: string, rec: ShipmentRecord): Promise<void
   await withRetry(async () => {
     const sql = getSql()
     await sql`
-      INSERT INTO iwkagri_shipments (id, org, date, location, producer, product, qty)
-      VALUES (${rec.id}, ${org}, ${rec.date ?? null}, ${rec.location || ''}, ${rec.producer || ''}, ${rec.product || ''}, ${Number(rec.qty) || 0})
+      INSERT INTO iwkagri_shipments (id, org, date, location, producer, product, qty, unit_price)
+      VALUES (${rec.id}, ${org}, ${rec.date ?? null}, ${rec.location || ''}, ${rec.producer || ''}, ${rec.product || ''}, ${Number(rec.qty) || 0}, ${Number(rec.unitPrice) || 0})
       ON CONFLICT (id) DO NOTHING
     `
   })
@@ -118,7 +128,9 @@ async function ensureMigrated(org: string): Promise<void> {
 }
 
 function rowToSale(r: any): SaleRecord {
-  const rec: SaleRecord = { id: r.id, date: r.date, location: r.location, producer: r.producer, product: r.product, qty: Number(r.qty), method: r.method }
+  const qty = Number(r.qty)
+  const unitPrice = Number(r.unit_price) || 0
+  const rec: SaleRecord = { id: r.id, date: r.date, location: r.location, producer: r.producer, product: r.product, qty, method: r.method, unitPrice, amount: qty * unitPrice }
   if (r.message_id != null) rec.messageId = r.message_id
   return rec
 }
@@ -169,7 +181,11 @@ export async function listShipments(org: string): Promise<ShipmentRecord[]> {
   return withRetry(async () => {
     const sql = getSql()
     const rows = await sql`SELECT * FROM iwkagri_shipments WHERE org = ${org} ORDER BY created_at ASC, id ASC`
-    return rows.map((r: any) => ({ id: r.id, date: r.date ?? undefined, location: r.location, producer: r.producer, product: r.product, qty: Number(r.qty) }))
+    return rows.map((r: any) => {
+      const qty = Number(r.qty)
+      const unitPrice = Number(r.unit_price) || 0
+      return { id: r.id, date: r.date ?? undefined, location: r.location, producer: r.producer, product: r.product, qty, unitPrice, amount: qty * unitPrice }
+    })
   })
 }
 
