@@ -4,6 +4,6 @@
   "buildCommand": "next build",
   "outputDirectory": ".next",
   "crons": [
-    { "path": "/api/cron/send-sales", "schedule": "0 * * * *" }
+    { "path": "/api/cron/send-sales", "schedule": "0 8 * * *" }
   ]
 }
