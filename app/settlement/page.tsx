@@ -1,0 +1,250 @@
+'use client'
+import AppShell from '@/components/AppShell'
+import { useEffect, useState, useCallback } from 'react'
+import { useSession } from 'next-auth/react'
+
+const yen = (n: number) => '¥' + (Number(n) || 0).toLocaleString()
+const thisMonth = () => new Date().toISOString().slice(0, 7)
+const ORG_NAME = 'いわくにアグリパートナーズ'
+
+interface Grp { party: string; tx: any[]; subtotal: number; commission: number; total: number }
+
+function groupBy(tx: any[], key: 'producer' | 'seller'): Grp[] {
+  const m = new Map<string, any[]>()
+  for (const t of tx) {
+    const k = t[key] || '（未割当）'
+    if (!m.has(k)) m.set(k, [])
+    m.get(k)!.push(t)
+  }
+  return [...m.entries()].map(([party, list]) => {
+    const subtotal = list.reduce((a, t) => a + (t.amount || 0), 0)
+    const commission = list.reduce((a, t) => a + (t.commission || 0), 0)
+    return { party, tx: list, subtotal, commission, total: subtotal + commission }
+  }).sort((a, b) => a.party.localeCompare(b.party, 'ja'))
+}
+
+export default function SettlementPage() {
+  const { data: session } = useSession()
+  const isAdmin = (session?.user as any)?.role === '組合管理者'
+
+  const [period, setPeriod] = useState(thisMonth())
+  const [tx, setTx] = useState<any[]>([])
+  const [invoices, setInvoices] = useState<any[]>([])
+  const [toast, setToast] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const load = useCallback((p: string) => {
+    fetch(`/api/transactions?period=${p}`).then(r => r.json()).then(d => {
+      setTx(d.transactions || []); setInvoices(d.invoices || [])
+    })
+  }, [])
+  useEffect(() => { load(period) }, [period, load])
+
+  function showToast(m: string) { setToast(m); setTimeout(() => setToast(''), 3000) }
+
+  // 精算対象（成立かつ未精算）/ 精算済
+  const pending = tx.filter(t => t.status === 'completed' && !t.invoiceId)
+  const settled = tx.filter(t => t.status === 'settled')
+
+  const previewProducer = groupBy(pending, 'producer')
+  const previewSeller = groupBy(pending, 'seller')
+  const pendingCommission = pending.reduce((a, t) => a + (t.commission || 0), 0)
+  const pendingSales = pending.reduce((a, t) => a + (t.amount || 0), 0)
+
+  async function confirmSettlement() {
+    if (pending.length === 0) { showToast('⚠️ 精算対象（成立・未精算）の取引がありません'); return }
+    if (!confirm(`${period} の成立取引 ${pending.length}件を精算し、請求書を発行します。よろしいですか？\n（発行後、対象取引は「精算済」になります）`)) return
+    setBusy(true)
+    const res = await fetch('/api/transactions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'generate_invoices', payload: { period } }),
+    })
+    const j = await res.json().catch(() => ({}))
+    setBusy(false)
+    if (!res.ok) { showToast('⚠️ ' + (j.error || '発行に失敗しました')); return }
+    showToast(`🧾 ${j.result?.count ?? 0}件を精算し、請求書を発行しました`)
+    load(period)
+  }
+
+  function downloadCsv() {
+    const src = invoices.length ? invoices : [
+      ...previewProducer.map(g => ({ kind: 'producer', party: g.party, subtotal: g.subtotal, commission: 0, total: g.subtotal })),
+      ...previewSeller.map(g => ({ kind: 'seller', party: g.party, subtotal: g.subtotal, commission: g.commission, total: g.total })),
+    ]
+    const rows: (string | number)[][] = [['種別', '対象', '販売金額', '手数料', '請求合計', '期間']]
+    for (const inv of src) {
+      rows.push([inv.kind === 'producer' ? '生産者請求' : '販売者請求', inv.party, inv.subtotal, inv.commission, inv.total, period])
+    }
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = `請求一覧_${period}.csv`; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // 請求書の印刷（精算済の取引から明細を構成して新規ウィンドウへ）
+  function printInvoices() {
+    const base = settled.length ? settled : pending
+    if (base.length === 0) { showToast('⚠️ 印刷対象の取引がありません'); return }
+    const prod = groupBy(base, 'producer')
+    const sell = groupBy(base, 'seller')
+    const esc = (s: any) => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' } as any)[c])
+    const rowsOf = (g: Grp, kind: 'producer' | 'seller') => g.tx.map(t => {
+      const bq = t.type === '卸売' ? t.deliveryQty : t.salesQty
+      return `<tr><td>${esc(t.date)}</td><td>${esc(t.product)}</td><td>${esc(t.type)}</td><td class="r">${bq}</td><td class="r">${yen(t.unitPrice)}</td><td class="r">${yen(t.amount)}</td>${kind === 'seller' ? `<td class="r">${yen(t.commission)}</td>` : ''}</tr>`
+    }).join('')
+
+    const invoiceBlock = (g: Grp, kind: 'producer' | 'seller') => `
+      <section class="inv">
+        <div class="head">
+          <div><div class="title">${kind === 'producer' ? '生産者請求書（支払明細）' : '請求書'}</div>
+          <div class="period">対象期間: ${esc(period)}</div></div>
+          <div class="org">${ORG_NAME}</div>
+        </div>
+        <div class="to">${esc(g.party)} 御中</div>
+        <div class="note">${kind === 'producer'
+          ? '下記の通り、販売金額の全額をお支払いいたします（生産者ファースト）。'
+          : '下記の通りご請求申し上げます（販売金額＋組合手数料）。'}</div>
+        <table>
+          <thead><tr><th>日付</th><th>商品</th><th>種別</th><th class="r">数量</th><th class="r">単価</th><th class="r">販売金額</th>${kind === 'seller' ? '<th class="r">手数料</th>' : ''}</tr></thead>
+          <tbody>${rowsOf(g, kind)}</tbody>
+        </table>
+        <div class="totals">
+          <div>販売金額 計: <b>${yen(g.subtotal)}</b></div>
+          ${kind === 'seller' ? `<div>手数料 計: <b>${yen(g.commission)}</b></div>` : ''}
+          <div class="grand">${kind === 'producer' ? 'お支払額' : 'ご請求額'}: <b>${yen(kind === 'producer' ? g.subtotal : g.total)}</b></div>
+        </div>
+      </section>`
+
+    const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>請求書 ${esc(period)}</title>
+      <style>
+        body{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;color:#222;margin:0;padding:24px;}
+        .inv{page-break-after:always;max-width:720px;margin:0 auto 32px;}
+        .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #333;padding-bottom:10px;}
+        .title{font-size:22px;font-weight:700;} .period{font-size:12px;color:#666;margin-top:4px;}
+        .org{font-size:13px;font-weight:700;text-align:right;}
+        .to{font-size:16px;font-weight:700;margin:18px 0 6px;}
+        .note{font-size:12px;color:#555;margin-bottom:12px;}
+        table{width:100%;border-collapse:collapse;font-size:12px;}
+        th,td{border:1px solid #ccc;padding:6px 8px;} th{background:#f3f3f3;text-align:left;}
+        .r{text-align:right;font-variant-numeric:tabular-nums;}
+        .totals{margin-top:12px;text-align:right;font-size:13px;line-height:1.9;}
+        .grand{font-size:16px;border-top:2px solid #333;padding-top:6px;margin-top:6px;}
+        @media print{ body{padding:0;} }
+      </style></head><body>
+      ${prod.map(g => invoiceBlock(g, 'producer')).join('')}
+      ${sell.map(g => invoiceBlock(g, 'seller')).join('')}
+      <script>window.onload=function(){window.print()}</script>
+      </body></html>`
+    const w = window.open('', '_blank')
+    if (!w) { showToast('⚠️ ポップアップがブロックされました。許可してください'); return }
+    w.document.write(html); w.document.close()
+  }
+
+  const s = {
+    box: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, marginBottom: 20 } as any,
+    btn: { background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', fontSize: 13, fontWeight: 700, cursor: 'pointer' } as any,
+    btn2: { background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' } as any,
+    th: { padding: '9px 12px', textAlign: 'left' as any, fontSize: 11, fontWeight: 700, color: 'var(--muted)', borderBottom: '1px solid var(--border)' },
+    td: { padding: '9px 12px', borderTop: '1px solid var(--border)', fontSize: 13 },
+    tdr: { padding: '9px 12px', borderTop: '1px solid var(--border)', fontSize: 13, textAlign: 'right' as any, fontFamily: 'Space Mono,monospace' },
+    stat: { background: 'var(--surface2)', borderRadius: 10, padding: '14px 18px', flex: 1, minWidth: 160 } as any,
+  }
+
+  if (!isAdmin) {
+    return <AppShell><div style={{ ...s.box, textAlign: 'center', color: 'var(--muted)', padding: 40 }}>🔒 月末締め・請求書は組合管理者のみ利用できます。</div></AppShell>
+  }
+
+  const table = (title: string, groups: Grp[], showCommission: boolean, totalKind: 'producer' | 'seller') => (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'auto', marginBottom: 16 }}>
+      <div style={{ padding: '12px 16px', fontWeight: 700, fontSize: 13, background: 'var(--surface2)' }}>{title}</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead><tr>
+          <th style={s.th}>対象</th><th style={s.th}>件数</th>
+          <th style={{ ...s.th, textAlign: 'right' }}>販売金額</th>
+          {showCommission && <th style={{ ...s.th, textAlign: 'right' }}>手数料</th>}
+          <th style={{ ...s.th, textAlign: 'right' }}>{totalKind === 'producer' ? '支払額' : '請求額'}</th>
+        </tr></thead>
+        <tbody>
+          {groups.length === 0 && <tr><td colSpan={showCommission ? 5 : 4} style={{ ...s.td, textAlign: 'center', color: 'var(--muted)', padding: 28 }}>対象なし</td></tr>}
+          {groups.map(g => (
+            <tr key={g.party}>
+              <td style={s.td}>{g.party}</td>
+              <td style={s.td}>{g.tx.length}</td>
+              <td style={s.tdr}>{yen(g.subtotal)}</td>
+              {showCommission && <td style={s.tdr}>{yen(g.commission)}</td>}
+              <td style={{ ...s.tdr, fontWeight: 700, color: totalKind === 'producer' ? 'var(--accent)' : 'var(--accent2)' }}>{yen(totalKind === 'producer' ? g.subtotal : g.total)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+
+  return (
+    <AppShell>
+      {/* 期間選択 */}
+      <div style={{ ...s.box, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+        <div>
+          <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 5 }}>対象期間</label>
+          <input type="month" value={period} onChange={e => setPeriod(e.target.value)}
+            style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 12px', fontSize: 14, color: 'var(--text)', fontFamily: 'inherit' }} />
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginLeft: 'auto', flexWrap: 'wrap' }}>
+          <button style={s.btn2} onClick={downloadCsv}>⬇️ CSV出力</button>
+          <button style={s.btn2} onClick={printInvoices}>🖨️ 請求書を印刷</button>
+        </div>
+      </div>
+
+      {/* サマリ */}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
+        <div style={s.stat}><div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>精算対象（成立・未精算）</div><div style={{ fontSize: 22, fontWeight: 700 }}>{pending.length}<span style={{ fontSize: 12, color: 'var(--muted)' }}> 件</span></div></div>
+        <div style={s.stat}><div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>販売金額 合計</div><div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Space Mono,monospace' }}>{yen(pendingSales)}</div></div>
+        <div style={s.stat}><div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>組合手数料 合計</div><div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Space Mono,monospace', color: 'var(--accent2)' }}>{yen(pendingCommission)}</div></div>
+      </div>
+
+      {/* プレビュー（未精算） */}
+      <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>精算プレビュー（{period}・未精算の成立取引）</h2>
+      {table('生産者請求書（組合 → 生産者 支払・満額）', previewProducer, false, 'producer')}
+      {table('販売者請求書（組合 → 販売者 請求・販売金額＋手数料）', previewSeller, true, 'seller')}
+
+      <div style={{ ...s.box, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+          上記の内容で <b style={{ color: 'var(--text)' }}>{period}</b> を締め、請求書を発行します。<br />
+          発行すると対象取引は「精算済」になり、二重精算されません。
+        </div>
+        <button style={{ ...s.btn, marginLeft: 'auto', opacity: busy || pending.length === 0 ? 0.5 : 1 }} disabled={busy || pending.length === 0} onClick={confirmSettlement}>
+          {busy ? '処理中...' : `🧮 ${period} を締めて請求書発行`}
+        </button>
+      </div>
+
+      {/* 発行済み請求書 */}
+      {invoices.length > 0 && (
+        <>
+          <h2 style={{ fontSize: 15, fontWeight: 700, margin: '8px 0 12px' }}>発行済み請求書（{period}）</h2>
+          <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr>
+                {['種別', '対象', '販売金額', '手数料', '合計', '状態'].map(h => <th key={h} style={{ ...s.th, textAlign: h === '対象' || h === '種別' || h === '状態' ? 'left' : 'right' }}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {invoices.map(inv => (
+                  <tr key={inv.id}>
+                    <td style={s.td}>{inv.kind === 'producer' ? '生産者請求' : '販売者請求'}</td>
+                    <td style={s.td}>{inv.party}</td>
+                    <td style={s.tdr}>{yen(inv.subtotal)}</td>
+                    <td style={s.tdr}>{yen(inv.commission)}</td>
+                    <td style={{ ...s.tdr, fontWeight: 700 }}>{yen(inv.total)}</td>
+                    <td style={s.td}>{inv.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, background: 'var(--surface)', border: '1px solid var(--accent)', borderRadius: 10, padding: '14px 20px', fontSize: 13, color: 'var(--text)', boxShadow: '0 4px 20px rgba(0,0,0,.12)', zIndex: 9999 }}>{toast}</div>}
+    </AppShell>
+  )
+}

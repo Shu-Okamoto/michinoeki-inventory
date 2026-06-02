@@ -8,6 +8,7 @@ import styles from './shell.module.css'
 const ITEMS = {
   news:      { href: '/news',      label: '📢 お知らせ' },
   deals:     { href: '/deals',     label: '🤝 取引（産直/卸売）' },
+  settlement:{ href: '/settlement',label: '🧮 月末締め・請求書' },
   send:      { href: '/send',      label: '📦 みかわ納品数入力' },
   dashboard: { href: '/dashboard', label: '📊 在庫・納品状況' },
   kyohai:    { href: '/kyohai',    label: '🚚 共配システム' },
@@ -33,7 +34,7 @@ const VIEW_LABEL: Record<View, string> = {
 
 function groupsForView(view: View) {
   if (view === 'admin') return [
-    { title: '産直/卸売ワークフロー', items: [ITEMS.deals] },
+    { title: '産直/卸売ワークフロー', items: [ITEMS.deals, ITEMS.settlement] },
     { title: '生産者ポータル', items: [ITEMS.news, ITEMS.send, ITEMS.dashboard, ITEMS.kyohai] },
     { title: '組合管理（アグリパートナーズ）', items: [ITEMS.producers, ITEMS.sales, ITEMS.history, ITEMS.email, ITEMS.settings] },
   ]
