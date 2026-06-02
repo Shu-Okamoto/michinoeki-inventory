@@ -7,6 +7,7 @@ import styles from './shell.module.css'
 
 const ITEMS = {
   news:      { href: '/news',      label: '📢 お知らせ' },
+  deals:     { href: '/deals',     label: '🤝 取引（産直/卸売）' },
   send:      { href: '/send',      label: '📦 みかわ納品数入力' },
   dashboard: { href: '/dashboard', label: '📊 在庫・納品状況' },
   kyohai:    { href: '/kyohai',    label: '🚚 共配システム' },
@@ -32,14 +33,15 @@ const VIEW_LABEL: Record<View, string> = {
 
 function groupsForView(view: View) {
   if (view === 'admin') return [
+    { title: '産直/卸売ワークフロー', items: [ITEMS.deals] },
     { title: '生産者ポータル', items: [ITEMS.news, ITEMS.send, ITEMS.dashboard, ITEMS.kyohai] },
     { title: '組合管理（アグリパートナーズ）', items: [ITEMS.producers, ITEMS.sales, ITEMS.history, ITEMS.email, ITEMS.settings] },
   ]
   if (view === 'seller') return [
-    { title: '販売会社ビュー', items: [ITEMS.news, ITEMS.sales, ITEMS.history] },
+    { title: '販売会社ビュー', items: [ITEMS.news, ITEMS.deals, ITEMS.sales, ITEMS.history] },
   ]
   if (view === 'producer') return [
-    { title: '生産者ビュー', items: [ITEMS.news, ITEMS.send, ITEMS.dashboard, ITEMS.kyohai] },
+    { title: '生産者ビュー', items: [ITEMS.news, ITEMS.deals, ITEMS.send, ITEMS.dashboard, ITEMS.kyohai] },
   ]
   return []
 }
