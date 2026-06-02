@@ -1,4 +1,5 @@
 import { kvGet, kvSet } from './db'
+import { listSalesByDate } from './records'
 import { ORG, MasterUser } from './users'
 import { sendMail, renderTemplate, DEFAULT_SALES_TEMPLATE, SendResult } from './email'
 
@@ -26,8 +27,8 @@ interface SalesSettings {
 // 指定日（JST）のレジ通過数を生産者ごとに集計してメール送信する
 export async function sendSalesDigest(dateStr?: string): Promise<{ date: string; sent: number; skipped: number; errors: string[]; results: { producer: string; to: string; result: SendResult }[] }> {
   const date = dateStr || jstToday()
-  const [sales, producers, settingsRaw] = await Promise.all([
-    kvGet<any[]>(ORG, 'sales'),
+  const [todays, producers, settingsRaw] = await Promise.all([
+    listSalesByDate(ORG, date),
     kvGet<MasterUser[]>(ORG, 'producers'),
     kvGet<any>(ORG, 'settings'),
   ])
@@ -35,8 +36,6 @@ export async function sendSalesDigest(dateStr?: string): Promise<{ date: string;
   const from = settings.fromEmail || 'onboarding@resend.dev'
   const subjectTpl = settings.subject || '【いわくにアグリパートナーズ】{date} の産直品売上数のお知らせ'
   const template = settings.template || DEFAULT_SALES_TEMPLATE
-
-  const todays = (sales || []).filter(s => s.date === date)
 
   // 生産者名でグルーピング
   const byProducer: Record<string, any[]> = {}

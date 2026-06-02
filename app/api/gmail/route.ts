@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { google } from 'googleapis'
 import { authOptions } from '@/lib/auth'
-import { kvGet, kvSet } from '@/lib/db'
+import { kvGet } from '@/lib/db'
+import { addSales } from '@/lib/records'
 import { ORG } from '@/lib/users'
 
 function localParse(text: string): Array<{ product: string; qty: number }> {
@@ -114,14 +115,12 @@ export async function POST(req: NextRequest) {
 
   try {
     
-    const sales: any[] = await kvGet(userId, 'sales') || []
-    for (const item of items) {
-      sales.push({
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2),
-        date, location, product: item.product, qty: item.qty, method: 'Gmail自動解析', messageId,
-      })
-    }
-    await kvSet(userId, 'sales', sales)
+    const recs = (items || []).map((item: any) => ({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+      date, location, producer: '', product: item.product, qty: Number(item.qty) || 0,
+      method: 'Gmail自動解析', messageId,
+    }))
+    await addSales(userId, recs)
 
     if (messageId) {
       const gmail = getGmailClient(session.accessToken)

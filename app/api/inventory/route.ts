@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { kvGet, kvSet } from '@/lib/db'
+import { listSales, addSales, deleteSale, clearSales, listShipments, addShipment, deleteShipment } from '@/lib/records'
 import { ORG, hashPassword, roleToView } from '@/lib/users'
 import { sendSalesDigest } from '@/lib/salesmail'
 
@@ -37,8 +38,8 @@ export async function GET(req: NextRequest) {
   const [locations, products, shipments, sales, gmailSettings, producers, announcements, settings] = await Promise.all([
     kvGet(ORG, 'locations'),
     kvGet(ORG, 'products'),
-    kvGet(ORG, 'shipments'),
-    kvGet(ORG, 'sales'),
+    listShipments(ORG),
+    listSales(ORG),
     kvGet(ORG, 'gmail_settings'),
     kvGet(ORG, 'producers'),
     kvGet(ORG, 'announcements'),
@@ -166,25 +167,22 @@ export async function POST(req: NextRequest) {
     case 'add_shipment': {
       // 納品＝生産者または管理者
       if (role === '販売者') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
-      const list: any[] = await kvGet(ORG, 'shipments') || []
-      list.push({ id: uid(), ...payload })
-      await kvSet(ORG, 'shipments', list)
+      await addShipment(ORG, { id: uid(), date: payload.date, location: payload.location, producer: payload.producer || '', product: payload.product, qty: Number(payload.qty) || 0 })
       return NextResponse.json({ ok: true })
     }
     case 'delete_shipment': {
       if (role === '販売者') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
-      const list: any[] = await kvGet(ORG, 'shipments') || []
-      await kvSet(ORG, 'shipments', list.filter((s: any) => s.id !== payload.id))
+      await deleteShipment(ORG, payload.id)
       return NextResponse.json({ ok: true })
     }
     case 'add_sales': {
       // レジ通過数＝販売者または管理者
       if (role === '生産者') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
-      const list: any[] = await kvGet(ORG, 'sales') || []
-      for (const item of payload.items) {
-        list.push({ id: uid(), date: payload.date, location: payload.location, producer: payload.producer || '', method: payload.method || '手動', ...item })
-      }
-      await kvSet(ORG, 'sales', list)
+      const recs = (payload.items || []).map((item: any) => ({
+        id: uid(), date: payload.date, location: payload.location, producer: payload.producer || '',
+        product: item.product, qty: Number(item.qty) || 0, method: payload.method || '手動',
+      }))
+      await addSales(ORG, recs)
       return NextResponse.json({ ok: true })
     }
     case 'save_gmail_settings': {
@@ -193,12 +191,11 @@ export async function POST(req: NextRequest) {
     }
     case 'delete_sale': {
       if (role === '生産者') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
-      const list: any[] = await kvGet(ORG, 'sales') || []
-      await kvSet(ORG, 'sales', list.filter((s: any) => s.id !== payload.id))
+      await deleteSale(ORG, payload.id)
       return NextResponse.json({ ok: true })
     }
     case 'clear_sales': {
-      await kvSet(ORG, 'sales', [])
+      await clearSales(ORG)
       return NextResponse.json({ ok: true })
     }
     case 'send_sales_mail': {

@@ -5,7 +5,7 @@ import postgres from 'postgres'
 // postgres.js は Neon / Supabase など標準Postgresに対応。
 // Supabase の Transaction pooler を使う場合は prepare:false が必須。
 let _sql: postgres.Sql | null = null
-function getSql() {
+export function getSql() {
   if (!_sql) {
     const url = process.env.POSTGRES_URL
     if (!url) throw new Error('POSTGRES_URL is not set')
@@ -15,7 +15,7 @@ function getSql() {
 }
 
 // コールドスタート時などの一時的な接続エラーをリトライで吸収する
-async function withRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
+export async function withRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
   let lastErr: any
   for (let i = 0; i < tries; i++) {
     try {
