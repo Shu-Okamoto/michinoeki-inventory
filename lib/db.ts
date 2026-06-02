@@ -1,18 +1,20 @@
-import { neon, NeonQueryFunction } from '@neondatabase/serverless'
+import postgres from 'postgres'
 
 // 接続はモジュール読み込み時ではなく初回利用時に初期化する
 // （ビルド時に環境変数が無くても import で落ちないようにするため）
-let _sql: NeonQueryFunction<false, false> | null = null
+// postgres.js は Neon / Supabase など標準Postgresに対応。
+// Supabase の Transaction pooler を使う場合は prepare:false が必須。
+let _sql: postgres.Sql | null = null
 function getSql() {
   if (!_sql) {
     const url = process.env.POSTGRES_URL
     if (!url) throw new Error('POSTGRES_URL is not set')
-    _sql = neon(url)
+    _sql = postgres(url, { ssl: 'require', prepare: false, max: 1, idle_timeout: 20 })
   }
   return _sql
 }
 
-// コールドスタート時などの一時的な fetch failed をリトライで吸収する
+// コールドスタート時などの一時的な接続エラーをリトライで吸収する
 async function withRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
   let lastErr: any
   for (let i = 0; i < tries; i++) {
@@ -21,7 +23,7 @@ async function withRetry<T>(fn: () => Promise<T>, tries = 3): Promise<T> {
     } catch (e: any) {
       lastErr = e
       const msg = String(e?.message || e)
-      const transient = /fetch failed|socket|ECONN|closed|timeout|terminat/i.test(msg)
+      const transient = /fetch failed|socket|ECONN|closed|timeout|terminat|CONNECT/i.test(msg)
       if (!transient || i === tries - 1) break
       await new Promise(r => setTimeout(r, 250 * (i + 1)))
     }
@@ -73,9 +75,9 @@ export async function kvSet(userId: string, key: string, value: any): Promise<vo
     const sql = getSql()
     await sql`
       INSERT INTO kv_store (user_id, key, value, updated_at)
-      VALUES (${userId}, ${key}, ${JSON.stringify(value)}, NOW())
+      VALUES (${userId}, ${key}, ${sql.json(value)}, NOW())
       ON CONFLICT (user_id, key)
-      DO UPDATE SET value = ${JSON.stringify(value)}, updated_at = NOW()
+      DO UPDATE SET value = ${sql.json(value)}, updated_at = NOW()
     `
   })
 }
