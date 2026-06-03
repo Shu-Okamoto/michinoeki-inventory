@@ -133,7 +133,11 @@ export default function DealsPage() {
               <label style={s.label}>商品</label>
               <select style={s.input} value={prod} onChange={e => setProd(e.target.value)}>
                 <option value="">選択</option>
-                {(master.products || []).filter((p: any) => (p.status || 'approved') === 'approved').map((p: any) => <option key={p.name}>{p.name}</option>)}
+                {(master.products || []).filter((p: any) => {
+                  if ((p.status || 'approved') !== 'approved') return false
+                  const sel = isProducer ? myName : producer
+                  return !p.producer || !sel || p.producer === sel
+                }).map((p: any) => <option key={p.name}>{p.name}</option>)}
               </select>
             </div>
             <div>

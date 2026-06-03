@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 
 export default function SettingsPage() {
   const [data, setData] = useState<any>({ locations:[], products:[], settings:{} })
-  const [newLoc, setNewLoc] = useState(''); const [newProd, setNewProd] = useState(''); const [newAlias, setNewAlias] = useState(''); const [newPrice, setNewPrice] = useState('')
+  const [newLoc, setNewLoc] = useState(''); const [newProd, setNewProd] = useState(''); const [newAlias, setNewAlias] = useState(''); const [newPrice, setNewPrice] = useState(''); const [newProducer, setNewProducer] = useState('')
   const [kyohaiUrl, setKyohaiUrl] = useState('')
   const [commissionRate, setCommissionRate] = useState('')
   const [priceEdits, setPriceEdits] = useState<Record<string, string>>({})
@@ -78,10 +78,14 @@ export default function SettingsPage() {
         <div style={s.boxHead}>🥦 商品マスタ管理</div>
         <div style={s.boxBody}>
           <div style={{display:'flex',gap:8,marginBottom:8,flexWrap:'wrap' as any}}>
+            <select style={{...s.input,maxWidth:180}} value={newProducer} onChange={e=>setNewProducer(e.target.value)}>
+              <option value="">生産者を選択</option>
+              {(data.producers||[]).filter((p:any)=>(p.role||'生産者')==='生産者').map((p:any)=><option key={p.id} value={p.name}>{p.name}</option>)}
+            </select>
             <input style={s.input} value={newProd} onChange={e=>setNewProd(e.target.value)} placeholder="商品名（例: トマト大袋）" />
             <input style={s.input} value={newAlias} onChange={e=>setNewAlias(e.target.value)} placeholder="別名・キーワード（例: トマト,大玉）" />
             <input style={{...s.input,maxWidth:120,flex:'none'}} type="number" min="0" value={newPrice} onChange={e=>setNewPrice(e.target.value)} placeholder="単価(円)" />
-            <button style={s.btn} onClick={async()=>{if(!newProd)return;await api('add_product',{name:newProd,aliases:newAlias,unitPrice:Number(newPrice)||0});setNewProd('');setNewAlias('');setNewPrice('');showToast('✅ 追加しました')}}>＋ 追加</button>
+            <button style={s.btn} onClick={async()=>{if(!newProd)return;await api('add_product',{name:newProd,producer:newProducer,aliases:newAlias,unitPrice:Number(newPrice)||0});setNewProd('');setNewAlias('');setNewPrice('');setNewProducer('');showToast('✅ 追加しました')}}>＋ 追加</button>
           </div>
           <p style={{fontSize:11,color:'var(--muted)',marginBottom:12}}>別名はメール解析で商品を特定するキーワードです（カンマ区切り）。単価は売上・出荷の金額計算に使われます。</p>
           {data.products.length===0
@@ -95,7 +99,7 @@ export default function SettingsPage() {
                     {p.name}
                     {pending && <span style={{marginLeft:8,fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:999,background:'#FCEFCF',color:'#9A6B00'}}>承認待ち{p.proposedBy?`・${p.proposedBy}`:''}</span>}
                   </div>
-                  {p.aliases&&<div style={{fontSize:11,color:'var(--muted)'}}>別名: {p.aliases}</div>}
+                  <div style={{fontSize:11,color:'var(--muted)'}}>生産者: {p.producer || '—'}{p.aliases?` ／ 別名: ${p.aliases}`:''}</div>
                 </div>
                 <input
                   style={{...s.input,maxWidth:96,flex:'none',padding:'5px 8px'}} type="number" min="0"
