@@ -10,6 +10,9 @@ import {
   listTransactions, generateInvoices, listInvoices, TxStatus,
 } from '@/lib/transactions'
 
+// コールドスタート時のDB起動待ちで504にならないよう関数の上限時間を延長
+export const maxDuration = 30
+
 const ADMIN = '組合管理者'
 
 async function defaults(product: string) {

@@ -3,6 +3,7 @@
   "framework": "nextjs",
   "buildCommand": "next build",
   "outputDirectory": ".next",
+  "regions": ["icn1"],
   "crons": [
     { "path": "/api/cron/send-sales", "schedule": "0 8 * * *" }
   ]

@@ -6,6 +6,9 @@ import { listSales, addSales, deleteSale, clearSales, listShipments, addShipment
 import { ORG, hashPassword, roleToView } from '@/lib/users'
 import { sendSalesDigest } from '@/lib/salesmail'
 
+// コールドスタート時のDB起動待ちで504にならないよう関数の上限時間を延長
+export const maxDuration = 30
+
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2) }
 
 // 商品マスタの単価を引く（売上/出荷登録時に単価をスナップショットするため）
