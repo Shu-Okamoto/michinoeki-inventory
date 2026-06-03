@@ -15,6 +15,26 @@ export const maxDuration = 30
 
 const ADMIN = '組合管理者'
 
+// ロール別の情報統制：相手側の金額・手数料はレスポンスから除去する。
+//  生産者: 自分の受取額(満額)は見えるが、手数料・販売者請求は見えない
+//  販売者: 自分の支払(請求)額は見えるが、生産者請求・手数料は見えない
+//  組合管理者: すべて見える
+function redactByRole(t: any, role: string) {
+  if (role === ADMIN) return t
+  const c = { ...t }
+  if (role === '生産者') {
+    delete c.commission; delete c.commissionRate; delete c.sellerAmount
+  } else if (role === '販売者') {
+    delete c.commission; delete c.commissionRate; delete c.producerAmount
+    delete c.amount; delete c.retailAmount; delete c.discountAmount; delete c.souzaiAmount
+  } else {
+    // guest 等：金額情報はすべて除去
+    delete c.commission; delete c.commissionRate; delete c.producerAmount; delete c.sellerAmount
+    delete c.amount; delete c.retailAmount; delete c.discountAmount; delete c.souzaiAmount
+  }
+  return c
+}
+
 async function defaults(product: string) {
   const products: any[] = await kvGet(ORG, 'products') || []
   const settings: any = await kvGet(ORG, 'settings') || {}
@@ -26,15 +46,19 @@ async function defaults(product: string) {
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const role = (session.user as any)?.role || 'guest'
   const { searchParams } = new URL(req.url)
   const status = (searchParams.get('status') || undefined) as TxStatus | undefined
   const period = searchParams.get('period') || undefined
   const [transactions, invoices] = await Promise.all([
     listTransactions(ORG, { status, period }),
-    listInvoices(ORG, period),
+    role === ADMIN ? listInvoices(ORG, period) : Promise.resolve([]),
   ])
-  const role = (session.user as any)?.role || 'guest'
-  return NextResponse.json({ transactions, invoices, me: { name: session.user?.name || '', role } })
+  return NextResponse.json({
+    transactions: transactions.map(t => redactByRole(t, role)),
+    invoices, // 請求書バッチ（手数料等を含む）は組合管理者のみ
+    me: { name: session.user?.name || '', role },
+  })
 }
 
 export async function POST(req: NextRequest) {
