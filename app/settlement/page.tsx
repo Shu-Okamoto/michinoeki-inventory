@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react'
 
 const yen = (n: number) => '¥' + (Number(n) || 0).toLocaleString()
 const thisMonth = () => new Date().toISOString().slice(0, 7)
-const ORG_NAME = 'いわくにアグリパートナーズ'
+const ORG_NAME = '協同組合いわくにアグリパートナーズ'
 
 interface Grp { party: string; tx: any[]; subtotal: number; commission: number; total: number }
 
@@ -104,16 +104,21 @@ export default function SettlementPage() {
       return `<tr><td>${esc(t.date)}</td><td>${esc(t.product)}</td><td>${esc(t.type)}</td><td class="r">${bq}</td><td class="r">${yen(t.unitPrice)}</td><td class="r">${yen(t.amount)}</td>${kind === 'seller' ? `<td class="r">${yen(t.commission)}</td>` : ''}</tr>`
     }).join('')
 
-    const invoiceBlock = (g: Grp, kind: 'producer' | 'seller') => `
+    const invoiceBlock = (g: Grp, kind: 'producer' | 'seller') => {
+      // 生産者請求書: 生産者 → 組合（宛先=組合）。販売者請求書: 組合 → 販売者（宛先=販売者）。
+      const to = kind === 'producer' ? `${ORG_NAME} 御中` : `${esc(g.party)} 御中`
+      const from = kind === 'producer' ? esc(g.party) : ORG_NAME
+      const total = kind === 'producer' ? g.subtotal : g.total
+      return `
       <section class="inv">
         <div class="head">
-          <div><div class="title">${kind === 'producer' ? '生産者請求書（支払明細）' : '請求書'}</div>
+          <div><div class="title">請求書</div>
           <div class="period">対象期間: ${esc(period)}</div></div>
-          <div class="org">${ORG_NAME}</div>
+          <div class="org"><div class="orglabel">発行</div>${from}</div>
         </div>
-        <div class="to">${esc(g.party)} 御中</div>
+        <div class="to">${to}</div>
         <div class="note">${kind === 'producer'
-          ? '下記の通り、販売金額の全額をお支払いいたします（生産者ファースト）。'
+          ? '下記の通りご請求申し上げます（産直品の販売金額・全額）。'
           : '下記の通りご請求申し上げます（販売金額＋組合手数料）。'}</div>
         <table>
           <thead><tr><th>日付</th><th>商品</th><th>種別</th><th class="r">数量</th><th class="r">単価</th><th class="r">販売金額</th>${kind === 'seller' ? '<th class="r">手数料</th>' : ''}</tr></thead>
@@ -122,9 +127,10 @@ export default function SettlementPage() {
         <div class="totals">
           <div>販売金額 計: <b>${yen(g.subtotal)}</b></div>
           ${kind === 'seller' ? `<div>手数料 計: <b>${yen(g.commission)}</b></div>` : ''}
-          <div class="grand">${kind === 'producer' ? 'お支払額' : 'ご請求額'}: <b>${yen(kind === 'producer' ? g.subtotal : g.total)}</b></div>
+          <div class="grand">ご請求額: <b>${yen(total)}</b></div>
         </div>
       </section>`
+    }
 
     const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>請求書 ${esc(period)}</title>
       <style>
@@ -133,7 +139,8 @@ export default function SettlementPage() {
         .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #333;padding-bottom:10px;}
         .title{font-size:22px;font-weight:700;} .period{font-size:12px;color:#666;margin-top:4px;}
         .org{font-size:13px;font-weight:700;text-align:right;}
-        .to{font-size:16px;font-weight:700;margin:18px 0 6px;}
+        .orglabel{font-size:10px;font-weight:400;color:#888;}
+        .to{font-size:18px;font-weight:700;margin:18px 0 6px;border-bottom:1px solid #333;display:inline-block;padding:0 24px 4px 0;}
         .note{font-size:12px;color:#555;margin-bottom:12px;}
         table{width:100%;border-collapse:collapse;font-size:12px;}
         th,td{border:1px solid #ccc;padding:6px 8px;} th{background:#f3f3f3;text-align:left;}
@@ -224,8 +231,8 @@ export default function SettlementPage() {
 
       {/* プレビュー（未精算） */}
       <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>精算プレビュー（{period}・産直=実売分で部分決算 / 卸売=納品数で全額）</h2>
-      {table('生産者請求書（組合 → 生産者 支払・満額）', previewProducer, false, 'producer')}
-      {table('販売者請求書（組合 → 販売者 請求・販売金額＋手数料）', previewSeller, true, 'seller')}
+      {table('生産者請求書（各生産者 → 協同組合いわくにアグリパートナーズ 御中・全額）', previewProducer, false, 'producer')}
+      {table('販売者請求書（協同組合いわくにアグリパートナーズ → 各販売者・販売金額＋手数料）', previewSeller, true, 'seller')}
 
       <div style={{ ...s.box, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 13, color: 'var(--muted)' }}>
