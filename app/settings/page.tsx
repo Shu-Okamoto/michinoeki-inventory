@@ -8,6 +8,7 @@ export default function SettingsPage() {
   const [kyohaiUrl, setKyohaiUrl] = useState('')
   const [commissionRate, setCommissionRate] = useState('')
   const [priceEdits, setPriceEdits] = useState<Record<string, string>>({})
+  const [producerEdits, setProducerEdits] = useState<Record<string, string>>({})
   const [mail, setMail] = useState<any>({ enabled: false, fromEmail: '', sendTime: '17:00', subject: '', template: '' })
   const [sending, setSending] = useState(false)
   const [toast, setToast] = useState('')
@@ -101,6 +102,14 @@ export default function SettingsPage() {
                   </div>
                   <div style={{fontSize:11,color:'var(--muted)'}}>生産者: {p.producer || '—'}{p.aliases?` ／ 別名: ${p.aliases}`:''}</div>
                 </div>
+                <select
+                  style={{...s.input,maxWidth:150,flex:'none',padding:'5px 8px'}}
+                  value={producerEdits[p.name] ?? (p.producer || '')}
+                  onChange={e=>setProducerEdits({...producerEdits,[p.name]:e.target.value})}
+                >
+                  <option value="">生産者なし</option>
+                  {(data.producers||[]).filter((x:any)=>(x.role||'生産者')==='生産者').map((x:any)=><option key={x.id} value={x.name}>{x.name}</option>)}
+                </select>
                 <input
                   style={{...s.input,maxWidth:96,flex:'none',padding:'5px 8px'}} type="number" min="0"
                   value={priceEdits[p.name] ?? String(p.unitPrice ?? 0)}
@@ -109,12 +118,12 @@ export default function SettingsPage() {
                 <span style={{fontSize:11,color:'var(--muted)'}}>円</span>
                 {pending ? (
                   <>
-                    <button style={{...s.btn,padding:'5px 10px',fontSize:11}} onClick={async()=>{await api('approve_product',{name:p.name,unitPrice:Number(priceEdits[p.name] ?? p.unitPrice ?? 0)||0});showToast('✅ 承認しました')}}>承認</button>
+                    <button style={{...s.btn,padding:'5px 10px',fontSize:11}} onClick={async()=>{await api('approve_product',{name:p.name,unitPrice:Number(priceEdits[p.name] ?? p.unitPrice ?? 0)||0,producer:producerEdits[p.name] ?? (p.producer||'')});showToast('✅ 承認しました')}}>承認</button>
                     <button style={s.delBtn} onClick={()=>{if(confirm('この申請を却下（削除）しますか？'))api('reject_product',{name:p.name})}}>却下</button>
                   </>
                 ) : (
                   <>
-                    <button style={{...s.btn,padding:'5px 10px',fontSize:11}} onClick={async()=>{await api('add_product',{name:p.name,unitPrice:Number(priceEdits[p.name] ?? p.unitPrice ?? 0)||0});showToast('💾 単価を保存しました')}}>保存</button>
+                    <button style={{...s.btn,padding:'5px 10px',fontSize:11}} onClick={async()=>{await api('add_product',{name:p.name,unitPrice:Number(priceEdits[p.name] ?? p.unitPrice ?? 0)||0,producer:producerEdits[p.name] ?? (p.producer||'')});showToast('💾 保存しました')}}>保存</button>
                     <button style={s.delBtn} onClick={()=>api('remove_product',{name:p.name})}>削除</button>
                   </>
                 )}
