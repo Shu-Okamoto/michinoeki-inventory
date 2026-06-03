@@ -9,7 +9,7 @@ export async function GET() {
   const url = process.env.POSTGRES_URL
   if (!url) return NextResponse.json({ error: 'POSTGRES_URL not set' })
   // 専用の診断接続（8秒で打ち切り）
-  const sql = postgres(url, { ssl: 'require', prepare: false, max: 1, connect_timeout: 10, idle_timeout: 5, connection: { statement_timeout: '8000' } })
+  const sql = postgres(url, { ssl: 'require', prepare: false, max: 1, connect_timeout: 10, idle_timeout: 5, connection: { statement_timeout: 8000 } })
 
   const steps: any[] = []
   async function step(name: string, fn: () => Promise<any>) {
