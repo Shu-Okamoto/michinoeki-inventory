@@ -9,7 +9,7 @@ export function getSql() {
   if (!_sql) {
     const url = process.env.POSTGRES_URL
     if (!url) throw new Error('POSTGRES_URL is not set')
-    _sql = postgres(url, { ssl: 'require', prepare: false, max: 1, idle_timeout: 20 })
+    _sql = postgres(url, { ssl: 'require', prepare: false, max: 1, idle_timeout: 20, connect_timeout: 15 })
   }
   return _sql
 }
