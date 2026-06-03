@@ -47,11 +47,19 @@ export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const role = (session.user as any)?.role || 'guest'
+  const myName = session.user?.name || ''
   const { searchParams } = new URL(req.url)
   const status = (searchParams.get('status') || undefined) as TxStatus | undefined
   const period = searchParams.get('period') || undefined
+  // 自分宛ての取引だけを返す（生産者=自分が生産者 / 販売者=自分が販売者 / 組合=全部）
+  const scope: { producer?: string; seller?: string } = {}
+  if (role === '生産者') scope.producer = myName
+  else if (role === '販売者') scope.seller = myName
+  else if (role !== ADMIN) {
+    return NextResponse.json({ transactions: [], invoices: [], me: { name: myName, role } })
+  }
   const [transactions, invoices] = await Promise.all([
-    listTransactions(ORG, { status, period }),
+    listTransactions(ORG, { status, period, ...scope }),
     role === ADMIN ? listInvoices(ORG, period) : Promise.resolve([]),
   ])
   return NextResponse.json({

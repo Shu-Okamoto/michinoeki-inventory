@@ -10,6 +10,8 @@ export default function SendPage() {
   const [loc, setLoc] = useState(''); const [prod, setProd] = useState('')
   const [qty, setQty] = useState(''); const [date, setDate] = useState(today())
   const [toast, setToast] = useState('')
+  // 商品申請フォーム
+  const [propName, setPropName] = useState(''); const [propAlias, setPropAlias] = useState(''); const [propPrice, setPropPrice] = useState('')
 
   useEffect(() => { fetch('/api/inventory').then(r=>r.json()).then(setData) }, [])
 
@@ -24,6 +26,16 @@ export default function SendPage() {
     if (!producer||!loc||!prod||!qty||!date) { showToast('⚠️ すべての項目を入力してください'); return }
     await api('add_shipment', { date, producer, location:loc, product:prod, qty:Number(qty) })
     setQty(''); showToast(`✅ ${loc} に ${prod} を ${qty}個 納品登録しました`)
+  }
+
+  async function proposeProduct() {
+    if (!propName) { showToast('⚠️ 商品名を入力してください'); return }
+    const res = await fetch('/api/inventory', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'propose_product',payload:{name:propName,aliases:propAlias,unitPrice:Number(propPrice)||0}}) })
+    const j = await res.json().catch(()=>({}))
+    if (!res.ok) { showToast('⚠️ '+(j.error||'申請に失敗しました')); return }
+    setPropName(''); setPropAlias(''); setPropPrice('')
+    fetch('/api/inventory').then(r=>r.json()).then(setData)
+    showToast(j.status==='approved' ? '✅ 商品を登録しました' : '✅ 商品を申請しました（組合の承認待ち）')
   }
 
   const s = { box:{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:12,padding:20,marginBottom:24} as any,
@@ -45,7 +57,7 @@ export default function SendPage() {
             ['納品先（道の駅）', <select style={s.input} value={loc} onChange={e=>setLoc(e.target.value)}>
               <option value="">選択</option>{data.locations.map((l:string)=><option key={l}>{l}</option>)}</select>],
             ['商品', <select style={s.input} value={prod} onChange={e=>setProd(e.target.value)}>
-              <option value="">選択</option>{data.products.map((p:any)=><option key={p.name}>{p.name}</option>)}</select>],
+              <option value="">選択</option>{data.products.filter((p:any)=>(p.status||'approved')==='approved').map((p:any)=><option key={p.name}>{p.name}</option>)}</select>],
             ['個数', <input style={s.input} type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)} placeholder="20" />],
             ['日付', <input style={s.input} type="date" value={date} onChange={e=>setDate(e.target.value)} />],
           ].map(([label, ctrl], i) => (
@@ -53,6 +65,27 @@ export default function SendPage() {
           ))}
         </div>
         <button style={s.btn} onClick={addShipment}>📦 納品登録する</button>
+      </div>
+
+      {/* 商品マスタの申請（生産者→組合が承認） */}
+      <div style={s.box}>
+        <h2 style={{fontSize:14,fontWeight:700,marginBottom:8}}>🌱 商品を申請</h2>
+        <p style={{fontSize:11,color:'var(--muted)',marginBottom:12}}>新しい商品は申請後、組合管理者の承認で使えるようになります（承認まで納品の商品選択には出ません）。</p>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
+          <input style={{...s.input,maxWidth:220}} value={propName} onChange={e=>setPropName(e.target.value)} placeholder="商品名（例: 白瓜）" />
+          <input style={{...s.input,maxWidth:220}} value={propAlias} onChange={e=>setPropAlias(e.target.value)} placeholder="別名・キーワード（任意）" />
+          <input style={{...s.input,maxWidth:130}} type="number" min="0" value={propPrice} onChange={e=>setPropPrice(e.target.value)} placeholder="希望単価(円)" />
+          <button style={s.btn} onClick={proposeProduct}>申請する</button>
+        </div>
+        {(data.products||[]).filter((p:any)=>(p.status||'approved')==='pending').length>0 && (
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {(data.products||[]).filter((p:any)=>(p.status||'approved')==='pending').map((p:any)=>(
+              <div key={p.name} style={{fontSize:12,color:'var(--muted)'}}>
+                ⏳ <b style={{color:'var(--text)'}}>{p.name}</b> 承認待ち{p.proposedBy?`（申請: ${p.proposedBy}）`:''}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div style={{border:'1px solid var(--border)',borderRadius:12,overflow:'auto'}}>

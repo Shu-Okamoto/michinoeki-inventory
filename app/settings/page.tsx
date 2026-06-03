@@ -86,10 +86,15 @@ export default function SettingsPage() {
           <p style={{fontSize:11,color:'var(--muted)',marginBottom:12}}>別名はメール解析で商品を特定するキーワードです（カンマ区切り）。単価は売上・出荷の金額計算に使われます。</p>
           {data.products.length===0
             ? <p style={{fontSize:12,color:'var(--muted)'}}>まだ登録がありません</p>
-            : data.products.map((p:any) => (
-              <div key={p.name} style={s.row}>
+            : [...data.products].sort((a:any,b:any)=>((a.status||'approved')==='pending'?-1:0)-((b.status||'approved')==='pending'?-1:0)).map((p:any) => {
+              const pending = (p.status || 'approved') === 'pending'
+              return (
+              <div key={p.name} style={{...s.row, ...(pending?{background:'#FCF6E8'}:{})}}>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:13,fontWeight:500}}>{p.name}</div>
+                  <div style={{fontSize:13,fontWeight:500}}>
+                    {p.name}
+                    {pending && <span style={{marginLeft:8,fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:999,background:'#FCEFCF',color:'#9A6B00'}}>承認待ち{p.proposedBy?`・${p.proposedBy}`:''}</span>}
+                  </div>
                   {p.aliases&&<div style={{fontSize:11,color:'var(--muted)'}}>別名: {p.aliases}</div>}
                 </div>
                 <input
@@ -98,10 +103,19 @@ export default function SettingsPage() {
                   onChange={e=>setPriceEdits({...priceEdits,[p.name]:e.target.value})}
                 />
                 <span style={{fontSize:11,color:'var(--muted)'}}>円</span>
-                <button style={{...s.btn,padding:'5px 10px',fontSize:11}} onClick={async()=>{await api('add_product',{name:p.name,unitPrice:Number(priceEdits[p.name] ?? p.unitPrice ?? 0)||0});showToast('💾 単価を保存しました')}}>保存</button>
-                <button style={s.delBtn} onClick={()=>api('remove_product',{name:p.name})}>削除</button>
+                {pending ? (
+                  <>
+                    <button style={{...s.btn,padding:'5px 10px',fontSize:11}} onClick={async()=>{await api('approve_product',{name:p.name,unitPrice:Number(priceEdits[p.name] ?? p.unitPrice ?? 0)||0});showToast('✅ 承認しました')}}>承認</button>
+                    <button style={s.delBtn} onClick={()=>{if(confirm('この申請を却下（削除）しますか？'))api('reject_product',{name:p.name})}}>却下</button>
+                  </>
+                ) : (
+                  <>
+                    <button style={{...s.btn,padding:'5px 10px',fontSize:11}} onClick={async()=>{await api('add_product',{name:p.name,unitPrice:Number(priceEdits[p.name] ?? p.unitPrice ?? 0)||0});showToast('💾 単価を保存しました')}}>保存</button>
+                    <button style={s.delBtn} onClick={()=>api('remove_product',{name:p.name})}>削除</button>
+                  </>
+                )}
               </div>
-            ))
+            )})
           }
         </div>
       </div>
