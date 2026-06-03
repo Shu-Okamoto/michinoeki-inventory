@@ -24,7 +24,10 @@ export interface Transaction {
   shipQty: number
   deliveryQty: number
   salesQty: number
-  retrievedQty: number     // 生産者が引き取った数（産直の売れ残り回収）
+  retrievedQty: number       // 引取依頼で生産者が引き取る数（産直の売れ残り回収）
+  souzaiQty: number          // 惣菜利用（販売者が3割価格で買取）した数
+  discountQty: number        // 割引販売した数（産直）
+  discountUnitPrice: number  // 割引販売の単価（円・半額〜定価の範囲）
   unitPrice: number
   commissionRate: number
   invoiceId?: string
@@ -34,6 +37,9 @@ export interface Transaction {
   updatedAt?: string
   // 算出値（読み取り時に付与）
   billingQty?: number
+  retailAmount?: number    // 通常実売の金額
+  discountAmount?: number  // 割引販売の金額
+  souzaiAmount?: number    // 惣菜利用の金額（3割）
   amount?: number
   commission?: number
   producerAmount?: number
@@ -52,15 +58,37 @@ export interface Invoice {
   createdAt?: string
 }
 
+export const SOUZAI_RATE = 0.3   // 惣菜利用は単価の3割で買取
+export const DISCOUNT_FLOOR = 0.5 // 割引販売の下限（半額まで）
+
 // 請求基準数量・金額の算出（お金のルールの単一の真実）
-export function calcMoney(t: Pick<Transaction, 'type' | 'deliveryQty' | 'salesQty' | 'unitPrice' | 'commissionRate'>) {
-  // 産直(委託)=実売数 / 卸売=組合確定の納品数
-  const billingQty = t.type === '卸売' ? Number(t.deliveryQty) || 0 : Number(t.salesQty) || 0
-  const amount = billingQty * (Number(t.unitPrice) || 0)
+//  産直: 実売(定価) ＋ 割引販売 ＋ 惣菜利用(3割) の合算で請求。引取は無償（請求対象外）。
+//  卸売: 納品数 × 単価。
+export function calcMoney(t: Pick<Transaction, 'type' | 'deliveryQty' | 'salesQty' | 'souzaiQty' | 'discountQty' | 'discountUnitPrice' | 'unitPrice' | 'commissionRate'>) {
+  const up = Number(t.unitPrice) || 0
   const rate = Number(t.commissionRate) || 0
+  let billingQty: number, retailAmount: number, discountAmount: number, souzaiAmount: number
+  if (t.type === '卸売') {
+    billingQty = Number(t.deliveryQty) || 0
+    retailAmount = billingQty * up
+    discountAmount = 0
+    souzaiAmount = 0
+  } else {
+    const sales = Number(t.salesQty) || 0
+    const disc = Number(t.discountQty) || 0
+    const souzai = Number(t.souzaiQty) || 0
+    billingQty = sales + disc + souzai
+    retailAmount = sales * up
+    discountAmount = disc * (Number(t.discountUnitPrice) || 0)
+    souzaiAmount = Math.floor(souzai * up * SOUZAI_RATE)
+  }
+  const amount = retailAmount + discountAmount + souzaiAmount
   const commission = Math.floor(amount * rate / 100)
   return {
     billingQty,
+    retailAmount,
+    discountAmount,
+    souzaiAmount,
     amount,
     commission,
     producerAmount: amount,          // 生産者請求（組合宛て）= 満額
@@ -101,6 +129,9 @@ function initTxTables(): Promise<void> {
       await sql`ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS settled_qty INTEGER`
       await sql`ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS carry_from_id TEXT`
       await sql`ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS retrieved_qty INTEGER NOT NULL DEFAULT 0`
+      await sql`ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS souzai_qty INTEGER NOT NULL DEFAULT 0`
+      await sql`ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discount_qty INTEGER NOT NULL DEFAULT 0`
+      await sql`ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discount_unit_price INTEGER NOT NULL DEFAULT 0`
       await sql`
         CREATE TABLE IF NOT EXISTS iwkagri_invoices (
           id TEXT PRIMARY KEY,
@@ -137,6 +168,9 @@ function rowToTx(r: any): Transaction {
     deliveryQty: Number(r.delivery_qty) || 0,
     salesQty: Number(r.sales_qty) || 0,
     retrievedQty: Number(r.retrieved_qty) || 0,
+    souzaiQty: Number(r.souzai_qty) || 0,
+    discountQty: Number(r.discount_qty) || 0,
+    discountUnitPrice: Number(r.discount_unit_price) || 0,
     unitPrice: Number(r.unit_price) || 0,
     commissionRate: Number(r.commission_rate) || 0,
     invoiceId: r.invoice_id ?? undefined,
@@ -202,18 +236,17 @@ export async function enterSales(org: string, id: string, salesQty: number): Pro
   await initTxTables()
   await withRetry(async () => {
     const sql = getSql()
-    const rows = await sql`SELECT type, delivery_qty, retrieved_qty FROM iwkagri_transactions WHERE org = ${org} AND id = ${id}`
+    const rows = await sql`SELECT type, delivery_qty, retrieved_qty, souzai_qty, discount_qty FROM iwkagri_transactions WHERE org = ${org} AND id = ${id}`
     if (!rows.length) return
     const type = rows[0].type
     const dq = Number(rows[0].delivery_qty) || 0
-    const rq = Number(rows[0].retrieved_qty) || 0
+    const other = (Number(rows[0].retrieved_qty) || 0) + (Number(rows[0].souzai_qty) || 0) + (Number(rows[0].discount_qty) || 0)
     let q = Number(salesQty) || 0
     if (q < 0) q = 0
-    // 産直は「納品数 − 引取数」を超えて販売できない（棚残を負にしない）
-    const sellable = dq - rq
-    if (type !== '卸売' && dq > 0 && q > sellable) q = Math.max(0, sellable)
-    // 完売（実売＋引取が納品数に到達）で自動成立
-    const soldOut = type !== '卸売' && dq > 0 && (q + rq) >= dq
+    // 産直は「納品数 −（引取＋惣菜＋割引）」を超えて販売できない（棚残を負にしない）
+    if (type !== '卸売' && dq > 0 && q > dq - other) q = Math.max(0, dq - other)
+    // 完売（実売＋他チャネルが納品数に到達）で自動成立
+    const soldOut = type !== '卸売' && dq > 0 && (q + other) >= dq
     const newStatus = soldOut ? 'completed' : 'sales_entered'
     await sql`
       UPDATE iwkagri_transactions SET sales_qty = ${q}, status = ${newStatus}, updated_at = NOW()
@@ -234,27 +267,62 @@ export async function completeTransaction(org: string, id: string): Promise<void
   })
 }
 
-// 生産者: 売れ残りの引き取りを記録（産直のみ）。
-// 実売＋引取が納品数に達したらワークフロー完了(completed)。
-export async function retrieveTransaction(org: string, id: string, retrievedQty: number): Promise<void> {
+// 棚残チャネル（引取・惣菜・割引）の共通更新。産直のみ。
+// 対象チャネルの数量を絶対値で更新し、棚残を負にしないよう上限を掛け、
+// 全チャネル合計が納品数に達したら completed。
+async function setChannelQty(
+  org: string, id: string,
+  channel: 'retrieved_qty' | 'souzai_qty' | 'discount_qty',
+  qty: number,
+  extra?: { discountUnitPrice?: number; floorPrice?: boolean },
+): Promise<void> {
   await initTxTables()
   await withRetry(async () => {
     const sql = getSql()
-    const rows = await sql`SELECT type, delivery_qty, sales_qty FROM iwkagri_transactions WHERE org = ${org} AND id = ${id}`
+    const rows = await sql`SELECT type, delivery_qty, sales_qty, retrieved_qty, souzai_qty, discount_qty, unit_price FROM iwkagri_transactions WHERE org = ${org} AND id = ${id}`
     if (!rows.length || rows[0].type === '卸売') return
     const dq = Number(rows[0].delivery_qty) || 0
-    const sq = Number(rows[0].sales_qty) || 0
-    let r = Number(retrievedQty) || 0
-    if (r < 0) r = 0
-    // 引取数は「納品数 − 実売数」を上限（累積の絶対値）
-    if (dq > 0 && r > dq - sq) r = Math.max(0, dq - sq)
-    const done = dq > 0 && (sq + r) >= dq
-    await sql`
-      UPDATE iwkagri_transactions
-      SET retrieved_qty = ${r}, status = ${done ? 'completed' : 'sales_entered'}, updated_at = NOW()
-      WHERE org = ${org} AND id = ${id} AND status IN ('confirmed','sales_entered')
-    `
+    const others = ['retrieved_qty', 'souzai_qty', 'discount_qty']
+      .filter(c => c !== channel)
+      .reduce((a, c) => a + (Number((rows[0] as any)[c]) || 0), 0) + (Number(rows[0].sales_qty) || 0)
+    let q = Number(qty) || 0
+    if (q < 0) q = 0
+    if (dq > 0 && q > dq - others) q = Math.max(0, dq - others) // 棚残を負にしない
+    const done = dq > 0 && (q + others) >= dq
+
+    // 割引販売は単価を 半額〜定価 にクランプ
+    let dup = Number(extra?.discountUnitPrice) || 0
+    if (channel === 'discount_qty') {
+      const up = Number(rows[0].unit_price) || 0
+      const floor = Math.ceil(up * DISCOUNT_FLOOR)
+      if (dup > up) dup = up
+      if (dup < floor) dup = floor
+    }
+
+    const status = done ? 'completed' : 'sales_entered'
+    if (channel === 'retrieved_qty') {
+      await sql`UPDATE iwkagri_transactions SET retrieved_qty = ${q}, status = ${status}, updated_at = NOW() WHERE org = ${org} AND id = ${id} AND status IN ('confirmed','sales_entered')`
+    } else if (channel === 'souzai_qty') {
+      await sql`UPDATE iwkagri_transactions SET souzai_qty = ${q}, status = ${status}, updated_at = NOW() WHERE org = ${org} AND id = ${id} AND status IN ('confirmed','sales_entered')`
+    } else {
+      await sql`UPDATE iwkagri_transactions SET discount_qty = ${q}, discount_unit_price = ${dup}, status = ${status}, updated_at = NOW() WHERE org = ${org} AND id = ${id} AND status IN ('confirmed','sales_entered')`
+    }
   })
+}
+
+// 引取依頼: 生産者が引き取る数を確定（産直のみ）
+export async function retrieveTransaction(org: string, id: string, retrievedQty: number): Promise<void> {
+  return setChannelQty(org, id, 'retrieved_qty', retrievedQty)
+}
+
+// 惣菜利用: 販売者が3割価格で買い取る数を記録（産直のみ）
+export async function souzaiTransaction(org: string, id: string, souzaiQty: number): Promise<void> {
+  return setChannelQty(org, id, 'souzai_qty', souzaiQty)
+}
+
+// 割引販売: 販売者が割引価格（半額〜定価）で売った数を記録（産直のみ）
+export async function discountSaleTransaction(org: string, id: string, discountQty: number, discountUnitPrice: number): Promise<void> {
+  return setChannelQty(org, id, 'discount_qty', discountQty, { discountUnitPrice })
 }
 
 export async function cancelTransaction(org: string, id: string): Promise<void> {
@@ -357,15 +425,16 @@ export async function generateInvoices(org: string, period: string): Promise<{ p
 
     for (const t of txs) {
       const isWholesale = t.type === '卸売'
-      const billQty = isWholesale ? (t.deliveryQty || 0) : (t.salesQty || 0)  // 請求数量
+      // 請求数量：卸売=納品 / 産直=実売＋割引＋惣菜（引取は無償・対象外）
+      const billQty = isWholesale ? (t.deliveryQty || 0) : ((t.salesQty || 0) + (t.discountQty || 0) + (t.souzaiQty || 0))
       // 取引を精算済に（請求数量をスナップショット）
       await sql`UPDATE iwkagri_transactions
         SET status = 'settled', settled_qty = ${billQty}, invoice_id = ${period}, updated_at = NOW()
         WHERE org = ${org} AND id = ${t.id}`
       billed.push(t)
-      // 産直の棚残（納品−実売−引取）は翌月へ繰越（新規取引・販売待ち）
+      // 産直の棚残（納品−実売−引取−惣菜−割引）は翌月へ繰越（新規取引・販売待ち）
       if (!isWholesale) {
-        const remainder = (t.deliveryQty || 0) - (t.salesQty || 0) - (t.retrievedQty || 0)
+        const remainder = (t.deliveryQty || 0) - (t.salesQty || 0) - (t.retrievedQty || 0) - (t.souzaiQty || 0) - (t.discountQty || 0)
         if (remainder > 0) {
           const nid = uid()
           await sql`INSERT INTO iwkagri_transactions
@@ -377,8 +446,10 @@ export async function generateInvoices(org: string, period: string): Promise<{ p
       }
     }
 
-    // 請求数量が0のもの（その期間に1個も売れなかった産直）は請求書に計上しない
-    const billable = billed.filter(t => (t.type === '卸売' ? (t.deliveryQty || 0) : (t.salesQty || 0)) > 0)
+    // 請求数量が0のもの（その期間に1個も請求対象がなかった産直）は請求書に計上しない
+    const billable = billed.filter(t => (t.type === '卸売'
+      ? (t.deliveryQty || 0)
+      : ((t.salesQty || 0) + (t.discountQty || 0) + (t.souzaiQty || 0))) > 0)
 
     const byProducer = new Map<string, Transaction[]>()
     const bySeller = new Map<string, Transaction[]>()

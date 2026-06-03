@@ -179,7 +179,8 @@ export default function DealsPage() {
         )}
         {filtered.map(t => {
           const meta = STATUS_META[t.status] || STATUS_META.shipped
-          const basisQty = t.type === '卸売' ? t.deliveryQty : t.salesQty
+          const basisQty = t.type === '卸売' ? t.deliveryQty : (t.billingQty ?? t.salesQty)
+          const hasBreakdown = t.type !== '卸売' && ((t.discountQty || 0) > 0 || (t.souzaiQty || 0) > 0)
           return (
             <div key={t.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
               {/* ヘッダー */}
@@ -203,24 +204,24 @@ export default function DealsPage() {
                 <span style={{ color: 'var(--muted)' }}>→</span>
                 <span style={{ color: 'var(--muted)', fontSize: 11 }}>納品</span><b>{t.deliveryQty}</b>
                 <span style={{ color: 'var(--muted)' }}>→</span>
-                <span style={{ color: 'var(--muted)', fontSize: 11 }}>販売</span><b>{t.salesQty}</b>
-                {t.type !== '卸売' && (t.retrievedQty || 0) > 0 && (<>
-                  <span style={{ color: 'var(--muted)' }}>/</span>
-                  <span style={{ color: 'var(--muted)', fontSize: 11 }}>引取</span><b>{t.retrievedQty}</b>
-                </>)}
+                <span style={{ color: 'var(--muted)', fontSize: 11 }}>実売</span><b>{t.salesQty}</b>
+                {t.type !== '卸売' && (t.discountQty || 0) > 0 && (<><span style={{ color: 'var(--muted)' }}>/</span><span style={{ color: 'var(--muted)', fontSize: 11 }}>割引</span><b>{t.discountQty}</b></>)}
+                {t.type !== '卸売' && (t.souzaiQty || 0) > 0 && (<><span style={{ color: 'var(--muted)' }}>/</span><span style={{ color: 'var(--muted)', fontSize: 11 }}>惣菜</span><b>{t.souzaiQty}</b></>)}
+                {t.type !== '卸売' && (t.retrievedQty || 0) > 0 && (<><span style={{ color: 'var(--muted)' }}>/</span><span style={{ color: 'var(--muted)', fontSize: 11 }}>引取</span><b>{t.retrievedQty}</b></>)}
                 {t.type !== '卸売' && (<span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'var(--surface2)', color: 'var(--text)' }}>
-                  棚残 {Math.max(0, (t.deliveryQty || 0) - (t.salesQty || 0) - (t.retrievedQty || 0))}
+                  棚残 {Math.max(0, (t.deliveryQty || 0) - (t.salesQty || 0) - (t.retrievedQty || 0) - (t.souzaiQty || 0) - (t.discountQty || 0))}
                 </span>)}
               </div>
 
               {/* 金額 */}
               <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '10px 14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: '6px 18px', fontSize: 12, marginBottom: 12 }}>
                 <span>単価: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.unitPrice)}</b></span>
-                <span>請求数量({t.type === '卸売' ? '納品' : '実売'}): <b style={{ fontFamily: 'Space Mono,monospace' }}>{basisQty}</b></span>
+                <span>請求数量({t.type === '卸売' ? '納品' : '実売＋割引＋惣菜'}): <b style={{ fontFamily: 'Space Mono,monospace' }}>{basisQty}</b></span>
                 <span>販売金額: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.amount)}</b></span>
                 <span>手数料({t.commissionRate}%): <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.commission)}</b></span>
                 <span style={{ color: 'var(--accent)' }}>生産者請求: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.producerAmount)}</b></span>
                 <span style={{ color: 'var(--accent2)' }}>販売者請求: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.sellerAmount)}</b></span>
+                {hasBreakdown && <span style={{ gridColumn: '1/-1', color: 'var(--muted)', fontSize: 11 }}>内訳　実売 {yen(t.retailAmount)} ／ 割引 {yen(t.discountAmount)} ／ 惣菜 {yen(t.souzaiAmount)}</span>}
               </div>
 
               {/* アクション */}
@@ -250,11 +251,31 @@ export default function DealsPage() {
                   <button style={s.btn} onClick={() => action('complete', { id: t.id }, '🎉 取引が成立しました')}>確認OK（成立）</button>
                 )}
 
-                {/* 生産者: 売れ残りの引き取り（産直のみ） */}
-                {(isProducer || isAdmin) && t.type !== '卸売' && (t.status === 'confirmed' || t.status === 'sales_entered') && (
+                {/* 棚残の処理（産直のみ・販売待ち/販売入力済） */}
+                {t.type !== '卸売' && (t.status === 'confirmed' || t.status === 'sales_entered') && (
                   <>
-                    <div><label style={s.miniLabel}>引取数（累計）</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'retrievedQty', t.retrievedQty || 0)} onChange={e => setDraft(t.id, 'retrievedQty', e.target.value)} /></div>
-                    <button style={s.btn2} onClick={() => action('retrieve', { id: t.id, retrievedQty: Number(dv(t, 'retrievedQty', t.retrievedQty || 0)) }, '✅ 引き取りを記録しました')}>引き取り記録</button>
+                    {/* 販売者: 割引販売（半額〜定価） */}
+                    {(isSeller || isAdmin) && (
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', padding: '4px 8px', border: '1px dashed var(--border)', borderRadius: 8 }}>
+                        <div><label style={s.miniLabel}>割引数</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'discountQty', t.discountQty || 0)} onChange={e => setDraft(t.id, 'discountQty', e.target.value)} /></div>
+                        <div><label style={s.miniLabel}>割引単価(≧半額{Math.ceil((t.unitPrice || 0) * 0.5)})</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'discountUnitPrice', t.discountUnitPrice || Math.ceil((t.unitPrice || 0) * 0.5))} onChange={e => setDraft(t.id, 'discountUnitPrice', e.target.value)} /></div>
+                        <button style={s.btn2} onClick={() => action('discount_sale', { id: t.id, discountQty: Number(dv(t, 'discountQty', t.discountQty || 0)), discountUnitPrice: Number(dv(t, 'discountUnitPrice', t.discountUnitPrice || Math.ceil((t.unitPrice || 0) * 0.5))) }, '✅ 割引販売を記録しました')}>割引販売</button>
+                      </div>
+                    )}
+                    {/* 販売者: 惣菜利用（3割買取） */}
+                    {(isSeller || isAdmin) && (
+                      <div><label style={s.miniLabel}>惣菜数(3割)</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'souzaiQty', t.souzaiQty || 0)} onChange={e => setDraft(t.id, 'souzaiQty', e.target.value)} /></div>
+                    )}
+                    {(isSeller || isAdmin) && (
+                      <button style={s.btn2} onClick={() => action('souzai', { id: t.id, souzaiQty: Number(dv(t, 'souzaiQty', t.souzaiQty || 0)) }, '✅ 惣菜利用を記録しました')}>惣菜利用</button>
+                    )}
+                    {/* 引取依頼（販売者が引取数を確定／生産者・組合も可） */}
+                    {(isSeller || isProducer || isAdmin) && (
+                      <div><label style={s.miniLabel}>引取数（累計）</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'retrievedQty', t.retrievedQty || 0)} onChange={e => setDraft(t.id, 'retrievedQty', e.target.value)} /></div>
+                    )}
+                    {(isSeller || isProducer || isAdmin) && (
+                      <button style={s.btn2} onClick={() => action('retrieve', { id: t.id, retrievedQty: Number(dv(t, 'retrievedQty', t.retrievedQty || 0)) }, '✅ 引取依頼を記録しました')}>引取依頼</button>
+                    )}
                   </>
                 )}
 

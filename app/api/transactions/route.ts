@@ -5,7 +5,8 @@ import { kvGet } from '@/lib/db'
 import { ORG } from '@/lib/users'
 import {
   createTransaction, confirmTransaction, enterSales, completeTransaction,
-  retrieveTransaction, cancelTransaction, patchTransaction, deleteTransaction,
+  retrieveTransaction, souzaiTransaction, discountSaleTransaction,
+  cancelTransaction, patchTransaction, deleteTransaction,
   listTransactions, generateInvoices, listInvoices, TxStatus,
 } from '@/lib/transactions'
 
@@ -82,9 +83,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
     case 'retrieve': {
-      // 生産者が売れ残りを引き取り（産直のみ）
-      if (role !== '生産者' && role !== ADMIN) return deny()
+      // 引取依頼の数量確定（販売者が確定／生産者・組合も可）。産直のみ
+      if (role !== '販売者' && role !== '生産者' && role !== ADMIN) return deny()
       await retrieveTransaction(ORG, payload.id, Number(payload.retrievedQty) || 0)
+      return NextResponse.json({ ok: true })
+    }
+    case 'souzai': {
+      // 惣菜利用（3割価格で買取）。産直のみ
+      if (role !== '販売者' && role !== ADMIN) return deny()
+      await souzaiTransaction(ORG, payload.id, Number(payload.souzaiQty) || 0)
+      return NextResponse.json({ ok: true })
+    }
+    case 'discount_sale': {
+      // 割引販売（半額〜定価）。産直のみ
+      if (role !== '販売者' && role !== ADMIN) return deny()
+      await discountSaleTransaction(ORG, payload.id, Number(payload.discountQty) || 0, Number(payload.discountUnitPrice) || 0)
       return NextResponse.json({ ok: true })
     }
     case 'cancel': {
