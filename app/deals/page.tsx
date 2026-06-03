@@ -204,6 +204,13 @@ export default function DealsPage() {
                 <span style={{ color: 'var(--muted)', fontSize: 11 }}>納品</span><b>{t.deliveryQty}</b>
                 <span style={{ color: 'var(--muted)' }}>→</span>
                 <span style={{ color: 'var(--muted)', fontSize: 11 }}>販売</span><b>{t.salesQty}</b>
+                {t.type !== '卸売' && (t.retrievedQty || 0) > 0 && (<>
+                  <span style={{ color: 'var(--muted)' }}>/</span>
+                  <span style={{ color: 'var(--muted)', fontSize: 11 }}>引取</span><b>{t.retrievedQty}</b>
+                </>)}
+                {t.type !== '卸売' && (<span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'var(--surface2)', color: 'var(--text)' }}>
+                  棚残 {Math.max(0, (t.deliveryQty || 0) - (t.salesQty || 0) - (t.retrievedQty || 0))}
+                </span>)}
               </div>
 
               {/* 金額 */}
@@ -241,6 +248,14 @@ export default function DealsPage() {
                 {/* 販売者: 成立 */}
                 {(isSeller || isAdmin) && t.status === 'sales_entered' && (
                   <button style={s.btn} onClick={() => action('complete', { id: t.id }, '🎉 取引が成立しました')}>確認OK（成立）</button>
+                )}
+
+                {/* 生産者: 売れ残りの引き取り（産直のみ） */}
+                {(isProducer || isAdmin) && t.type !== '卸売' && (t.status === 'confirmed' || t.status === 'sales_entered') && (
+                  <>
+                    <div><label style={s.miniLabel}>引取数（累計）</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'retrievedQty', t.retrievedQty || 0)} onChange={e => setDraft(t.id, 'retrievedQty', e.target.value)} /></div>
+                    <button style={s.btn2} onClick={() => action('retrieve', { id: t.id, retrievedQty: Number(dv(t, 'retrievedQty', t.retrievedQty || 0)) }, '✅ 引き取りを記録しました')}>引き取り記録</button>
+                  </>
                 )}
 
                 {/* 組合: 取消・削除 */}

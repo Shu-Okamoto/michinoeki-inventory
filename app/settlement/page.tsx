@@ -42,18 +42,27 @@ export default function SettlementPage() {
 
   function showToast(m: string) { setToast(m); setTimeout(() => setToast(''), 3000) }
 
-  // 精算対象（成立かつ未精算）/ 精算済
-  const pending = tx.filter(t => t.status === 'completed' && !t.invoiceId)
+  // 精算対象（確認済み以降・未精算）/ 精算済
+  // 産直は実売分で部分決算、卸売は納品数で全額決算。
+  const SETTLE_STATUS = ['confirmed', 'sales_entered', 'completed']
+  const pending = tx.filter(t => SETTLE_STATUS.includes(t.status) && !t.invoiceId)
   const settled = tx.filter(t => t.status === 'settled')
 
   const previewProducer = groupBy(pending, 'producer')
   const previewSeller = groupBy(pending, 'seller')
   const pendingCommission = pending.reduce((a, t) => a + (t.commission || 0), 0)
   const pendingSales = pending.reduce((a, t) => a + (t.amount || 0), 0)
+  // 産直の棚残（納品−実売−引取）＝翌月へ繰越される分
+  const onShelf = (t: any) => Math.max(0, (t.deliveryQty || 0) - (t.salesQty || 0) - (t.retrievedQty || 0))
+  const carryovers = pending.filter(t => t.type !== '卸売' && t.status !== 'completed' && onShelf(t) > 0)
+  const carryQty = carryovers.reduce((a, t) => a + onShelf(t), 0)
 
   async function confirmSettlement() {
-    if (pending.length === 0) { showToast('⚠️ 精算対象（成立・未精算）の取引がありません'); return }
-    if (!confirm(`${period} の成立取引 ${pending.length}件を精算し、請求書を発行します。よろしいですか？\n（発行後、対象取引は「精算済」になります）`)) return
+    if (pending.length === 0) { showToast('⚠️ 精算対象（確認済み以降・未精算）の取引がありません'); return }
+    if (!confirm(`${period} の精算対象 ${pending.length}件を決算し、請求書を発行します。\n` +
+      `・産直は実売分で部分決算\n・卸売は納品数で全額決算\n` +
+      (carryovers.length ? `・産直の売れ残り ${carryovers.length}件（計${carryQty}個）は翌月へ繰越\n` : '') +
+      `よろしいですか？（発行後、対象取引は「精算済」になります）`)) return
     setBusy(true)
     const res = await fetch('/api/transactions', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -62,7 +71,8 @@ export default function SettlementPage() {
     const j = await res.json().catch(() => ({}))
     setBusy(false)
     if (!res.ok) { showToast('⚠️ ' + (j.error || '発行に失敗しました')); return }
-    showToast(`🧾 ${j.result?.count ?? 0}件を精算し、請求書を発行しました`)
+    const c = j.result?.carried ?? 0
+    showToast(`🧾 ${j.result?.count ?? 0}件を精算しました${c ? `（${c}件を翌月へ繰越）` : ''}`)
     load(period)
   }
 
@@ -203,8 +213,17 @@ export default function SettlementPage() {
         <div style={s.stat}><div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>組合手数料 合計</div><div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Space Mono,monospace', color: 'var(--accent2)' }}>{yen(pendingCommission)}</div></div>
       </div>
 
+      {/* 繰越プレビュー */}
+      {carryovers.length > 0 && (
+        <div style={{ ...s.box, borderColor: 'var(--warn)', background: '#FCF6E8' }}>
+          <div style={{ fontSize: 13 }}>
+            🔁 <b>{carryovers.length}件</b>（産直・計 <b>{carryQty}個</b>）が未完売です。締めると<b>実売分のみ決算</b>し、売れ残りは<b>翌月へ新規取引として繰越</b>されます（生産者が引き取れば繰越されません）。
+          </div>
+        </div>
+      )}
+
       {/* プレビュー（未精算） */}
-      <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>精算プレビュー（{period}・未精算の成立取引）</h2>
+      <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>精算プレビュー（{period}・産直=実売分で部分決算 / 卸売=納品数で全額）</h2>
       {table('生産者請求書（組合 → 生産者 支払・満額）', previewProducer, false, 'producer')}
       {table('販売者請求書（組合 → 販売者 請求・販売金額＋手数料）', previewSeller, true, 'seller')}
 

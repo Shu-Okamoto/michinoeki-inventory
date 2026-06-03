@@ -5,8 +5,8 @@ import { kvGet } from '@/lib/db'
 import { ORG } from '@/lib/users'
 import {
   createTransaction, confirmTransaction, enterSales, completeTransaction,
-  cancelTransaction, patchTransaction, deleteTransaction, listTransactions,
-  generateInvoices, listInvoices, TxStatus,
+  retrieveTransaction, cancelTransaction, patchTransaction, deleteTransaction,
+  listTransactions, generateInvoices, listInvoices, TxStatus,
 } from '@/lib/transactions'
 
 const ADMIN = '組合管理者'
@@ -79,6 +79,12 @@ export async function POST(req: NextRequest) {
       // 販売者が確認OK → 成立
       if (role !== '販売者' && role !== ADMIN) return deny()
       await completeTransaction(ORG, payload.id)
+      return NextResponse.json({ ok: true })
+    }
+    case 'retrieve': {
+      // 生産者が売れ残りを引き取り（産直のみ）
+      if (role !== '生産者' && role !== ADMIN) return deny()
+      await retrieveTransaction(ORG, payload.id, Number(payload.retrievedQty) || 0)
       return NextResponse.json({ ok: true })
     }
     case 'cancel': {
