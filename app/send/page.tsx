@@ -11,7 +11,7 @@ export default function SendPage() {
   const [qty, setQty] = useState(''); const [date, setDate] = useState(today())
   const [toast, setToast] = useState('')
   // 商品申請フォーム
-  const [propName, setPropName] = useState(''); const [propAlias, setPropAlias] = useState(''); const [propPrice, setPropPrice] = useState('')
+  const [propName, setPropName] = useState(''); const [propUnit, setPropUnit] = useState(''); const [propPrice, setPropPrice] = useState('')
 
   useEffect(() => { fetch('/api/inventory').then(r=>r.json()).then(setData) }, [])
 
@@ -30,10 +30,10 @@ export default function SendPage() {
 
   async function proposeProduct() {
     if (!propName) { showToast('⚠️ 商品名を入力してください'); return }
-    const res = await fetch('/api/inventory', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'propose_product',payload:{name:propName,aliases:propAlias,unitPrice:Number(propPrice)||0}}) })
+    const res = await fetch('/api/inventory', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'propose_product',payload:{name:propName,unit:propUnit,unitPrice:Number(propPrice)||0}}) })
     const j = await res.json().catch(()=>({}))
     if (!res.ok) { showToast('⚠️ '+(j.error||'申請に失敗しました')); return }
-    setPropName(''); setPropAlias(''); setPropPrice('')
+    setPropName(''); setPropUnit(''); setPropPrice('')
     fetch('/api/inventory').then(r=>r.json()).then(setData)
     showToast(j.status==='approved' ? '✅ 商品を登録しました' : '✅ 商品を申請しました（組合の承認待ち）')
   }
@@ -73,10 +73,11 @@ export default function SendPage() {
         <p style={{fontSize:11,color:'var(--muted)',marginBottom:12}}>新しい商品は申請後、組合管理者の承認で使えるようになります（承認まで納品の商品選択には出ません）。</p>
         <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
           <input style={{...s.input,maxWidth:220}} value={propName} onChange={e=>setPropName(e.target.value)} placeholder="商品名（例: 白瓜）" />
-          <input style={{...s.input,maxWidth:220}} value={propAlias} onChange={e=>setPropAlias(e.target.value)} placeholder="別名・キーワード（任意）" />
+          <input style={{...s.input,maxWidth:130}} list="unit-list" value={propUnit} onChange={e=>setPropUnit(e.target.value)} placeholder="単位（袋/本/KG）" />
           <input style={{...s.input,maxWidth:130}} type="number" min="0" value={propPrice} onChange={e=>setPropPrice(e.target.value)} placeholder="希望単価(円)" />
           <button style={s.btn} onClick={proposeProduct}>申請する</button>
         </div>
+        <datalist id="unit-list"><option value="袋" /><option value="本" /><option value="個" /><option value="KG" /><option value="束" /><option value="パック" /><option value="箱" /></datalist>
         {(data.products||[]).filter((p:any)=>(p.status||'approved')==='pending').length>0 && (
           <div style={{display:'flex',flexDirection:'column',gap:6}}>
             {(data.products||[]).filter((p:any)=>(p.status||'approved')==='pending').map((p:any)=>(

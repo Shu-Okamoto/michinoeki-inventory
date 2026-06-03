@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react'
 
 export default function SettingsPage() {
   const [data, setData] = useState<any>({ locations:[], products:[], settings:{} })
-  const [newLoc, setNewLoc] = useState(''); const [newProd, setNewProd] = useState(''); const [newAlias, setNewAlias] = useState(''); const [newPrice, setNewPrice] = useState(''); const [newProducer, setNewProducer] = useState('')
+  const [newLoc, setNewLoc] = useState(''); const [newProd, setNewProd] = useState(''); const [newUnit, setNewUnit] = useState(''); const [newPrice, setNewPrice] = useState(''); const [newProducer, setNewProducer] = useState('')
   const [kyohaiUrl, setKyohaiUrl] = useState('')
   const [commissionRate, setCommissionRate] = useState('')
   const [priceEdits, setPriceEdits] = useState<Record<string, string>>({})
   const [producerEdits, setProducerEdits] = useState<Record<string, string>>({})
+  const [unitEdits, setUnitEdits] = useState<Record<string, string>>({})
   const [mail, setMail] = useState<any>({ enabled: false, fromEmail: '', sendTime: '17:00', subject: '', template: '' })
   const [sending, setSending] = useState(false)
   const [toast, setToast] = useState('')
@@ -84,11 +85,12 @@ export default function SettingsPage() {
               {(data.producers||[]).filter((p:any)=>(p.role||'生産者')==='生産者').map((p:any)=><option key={p.id} value={p.name}>{p.name}</option>)}
             </select>
             <input style={s.input} value={newProd} onChange={e=>setNewProd(e.target.value)} placeholder="商品名（例: トマト大袋）" />
-            <input style={s.input} value={newAlias} onChange={e=>setNewAlias(e.target.value)} placeholder="別名・キーワード（例: トマト,大玉）" />
+            <input style={{...s.input,maxWidth:110,flex:'none'}} list="unit-list" value={newUnit} onChange={e=>setNewUnit(e.target.value)} placeholder="単位（袋/本/KG）" />
             <input style={{...s.input,maxWidth:120,flex:'none'}} type="number" min="0" value={newPrice} onChange={e=>setNewPrice(e.target.value)} placeholder="単価(円)" />
-            <button style={s.btn} onClick={async()=>{if(!newProd)return;await api('add_product',{name:newProd,producer:newProducer,aliases:newAlias,unitPrice:Number(newPrice)||0});setNewProd('');setNewAlias('');setNewPrice('');setNewProducer('');showToast('✅ 追加しました')}}>＋ 追加</button>
+            <button style={s.btn} onClick={async()=>{if(!newProd)return;await api('add_product',{name:newProd,producer:newProducer,unit:newUnit,unitPrice:Number(newPrice)||0});setNewProd('');setNewUnit('');setNewPrice('');setNewProducer('');showToast('✅ 追加しました')}}>＋ 追加</button>
           </div>
-          <p style={{fontSize:11,color:'var(--muted)',marginBottom:12}}>別名はメール解析で商品を特定するキーワードです（カンマ区切り）。単価は売上・出荷の金額計算に使われます。</p>
+          <datalist id="unit-list"><option value="袋" /><option value="本" /><option value="個" /><option value="KG" /><option value="束" /><option value="パック" /><option value="箱" /></datalist>
+          <p style={{fontSize:11,color:'var(--muted)',marginBottom:12}}>単位は数量の表示に使われます（例: 袋・本・KG）。単価は売上・出荷の金額計算に使われます。</p>
           {data.products.length===0
             ? <p style={{fontSize:12,color:'var(--muted)'}}>まだ登録がありません</p>
             : [...data.products].sort((a:any,b:any)=>((a.status||'approved')==='pending'?-1:0)-((b.status||'approved')==='pending'?-1:0)).map((p:any) => {
@@ -100,7 +102,7 @@ export default function SettingsPage() {
                     {p.name}
                     {pending && <span style={{marginLeft:8,fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:999,background:'#FCEFCF',color:'#9A6B00'}}>承認待ち{p.proposedBy?`・${p.proposedBy}`:''}</span>}
                   </div>
-                  <div style={{fontSize:11,color:'var(--muted)'}}>生産者: {p.producer || '—'}{p.aliases?` ／ 別名: ${p.aliases}`:''}</div>
+                  <div style={{fontSize:11,color:'var(--muted)'}}>生産者: {p.producer || '—'}{p.unit?` ／ 単位: ${p.unit}`:''}</div>
                 </div>
                 <select
                   style={{...s.input,maxWidth:150,flex:'none',padding:'5px 8px'}}
@@ -111,6 +113,12 @@ export default function SettingsPage() {
                   {(data.producers||[]).filter((x:any)=>(x.role||'生産者')==='生産者').map((x:any)=><option key={x.id} value={x.name}>{x.name}</option>)}
                 </select>
                 <input
+                  style={{...s.input,maxWidth:80,flex:'none',padding:'5px 8px'}} list="unit-list"
+                  value={unitEdits[p.name] ?? (p.unit || '')}
+                  onChange={e=>setUnitEdits({...unitEdits,[p.name]:e.target.value})}
+                  placeholder="単位"
+                />
+                <input
                   style={{...s.input,maxWidth:96,flex:'none',padding:'5px 8px'}} type="number" min="0"
                   value={priceEdits[p.name] ?? String(p.unitPrice ?? 0)}
                   onChange={e=>setPriceEdits({...priceEdits,[p.name]:e.target.value})}
@@ -118,12 +126,12 @@ export default function SettingsPage() {
                 <span style={{fontSize:11,color:'var(--muted)'}}>円</span>
                 {pending ? (
                   <>
-                    <button style={{...s.btn,padding:'5px 10px',fontSize:11}} onClick={async()=>{await api('approve_product',{name:p.name,unitPrice:Number(priceEdits[p.name] ?? p.unitPrice ?? 0)||0,producer:producerEdits[p.name] ?? (p.producer||'')});showToast('✅ 承認しました')}}>承認</button>
+                    <button style={{...s.btn,padding:'5px 10px',fontSize:11}} onClick={async()=>{await api('approve_product',{name:p.name,unitPrice:Number(priceEdits[p.name] ?? p.unitPrice ?? 0)||0,producer:producerEdits[p.name] ?? (p.producer||''),unit:unitEdits[p.name] ?? (p.unit||'')});showToast('✅ 承認しました')}}>承認</button>
                     <button style={s.delBtn} onClick={()=>{if(confirm('この申請を却下（削除）しますか？'))api('reject_product',{name:p.name})}}>却下</button>
                   </>
                 ) : (
                   <>
-                    <button style={{...s.btn,padding:'5px 10px',fontSize:11}} onClick={async()=>{await api('add_product',{name:p.name,unitPrice:Number(priceEdits[p.name] ?? p.unitPrice ?? 0)||0,producer:producerEdits[p.name] ?? (p.producer||'')});showToast('💾 保存しました')}}>保存</button>
+                    <button style={{...s.btn,padding:'5px 10px',fontSize:11}} onClick={async()=>{await api('add_product',{name:p.name,unitPrice:Number(priceEdits[p.name] ?? p.unitPrice ?? 0)||0,producer:producerEdits[p.name] ?? (p.producer||''),unit:unitEdits[p.name] ?? (p.unit||'')});showToast('💾 保存しました')}}>保存</button>
                     <button style={s.delBtn} onClick={()=>api('remove_product',{name:p.name})}>削除</button>
                   </>
                 )}

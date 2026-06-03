@@ -175,13 +175,13 @@ export async function POST(req: NextRequest) {
       const existing = list.find((p: any) => p.name === payload.name)
       const unitPrice = Number(payload.unitPrice) || 0
       if (existing) {
-        // 既存商品は別名・単価・生産者を更新（単価編集を兼ねる）
-        if (payload.aliases !== undefined) existing.aliases = payload.aliases || ''
+        // 既存商品は単位・単価・生産者を更新（単価編集を兼ねる）
+        if (payload.unit !== undefined) existing.unit = payload.unit || ''
         if (payload.unitPrice !== undefined) existing.unitPrice = unitPrice
         if (payload.producer !== undefined) existing.producer = payload.producer || ''
         existing.status = 'approved'
       } else {
-        list.push({ name: payload.name, producer: payload.producer || '', aliases: payload.aliases || '', unitPrice, status: 'approved' })
+        list.push({ name: payload.name, producer: payload.producer || '', unit: payload.unit || '', unitPrice, status: 'approved' })
       }
       await kvSet(ORG, 'products', list)
       return NextResponse.json({ ok: true })
@@ -200,7 +200,7 @@ export async function POST(req: NextRequest) {
       list.push({
         name: payload.name,
         producer,
-        aliases: payload.aliases || '',
+        unit: payload.unit || '',
         unitPrice: Number(payload.unitPrice) || 0,
         status,
         proposedBy: session.user?.name || '',
@@ -214,7 +214,7 @@ export async function POST(req: NextRequest) {
       if (p) {
         p.status = 'approved'
         if (payload.unitPrice !== undefined) p.unitPrice = Number(payload.unitPrice) || 0
-        if (payload.aliases !== undefined) p.aliases = payload.aliases || ''
+        if (payload.unit !== undefined) p.unit = payload.unit || ''
         if (payload.producer !== undefined) p.producer = payload.producer || ''
       }
       await kvSet(ORG, 'products', list)
