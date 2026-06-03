@@ -216,15 +216,30 @@ export default function DealsPage() {
                 </span>)}
               </div>
 
-              {/* 金額 */}
+              {/* 金額（ロール別に表示を統制） */}
               <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '10px 14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: '6px 18px', fontSize: 12, marginBottom: 12 }}>
                 <span>単価: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.unitPrice)}</b></span>
                 <span>請求数量({t.type === '卸売' ? '納品' : '実売＋割引＋惣菜'}): <b style={{ fontFamily: 'Space Mono,monospace' }}>{basisQty}</b></span>
-                <span>販売金額: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.amount)}</b></span>
-                <span>手数料({t.commissionRate}%): <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.commission)}</b></span>
-                <span style={{ color: 'var(--accent)' }}>生産者請求: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.producerAmount)}</b></span>
-                <span style={{ color: 'var(--accent2)' }}>販売者請求: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.sellerAmount)}</b></span>
-                {hasBreakdown && <span style={{ gridColumn: '1/-1', color: 'var(--muted)', fontSize: 11 }}>内訳　実売 {yen(t.retailAmount)} ／ 割引 {yen(t.discountAmount)} ／ 惣菜 {yen(t.souzaiAmount)}</span>}
+
+                {/* 組合管理者: すべて */}
+                {isAdmin && <>
+                  <span>販売金額: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.amount)}</b></span>
+                  <span>手数料({t.commissionRate}%): <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.commission)}</b></span>
+                  <span style={{ color: 'var(--accent)' }}>生産者請求: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.producerAmount)}</b></span>
+                  <span style={{ color: 'var(--accent2)' }}>販売者請求: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.sellerAmount)}</b></span>
+                  {hasBreakdown && <span style={{ gridColumn: '1/-1', color: 'var(--muted)', fontSize: 11 }}>内訳　実売 {yen(t.retailAmount)} ／ 割引 {yen(t.discountAmount)} ／ 惣菜 {yen(t.souzaiAmount)}</span>}
+                </>}
+
+                {/* 生産者: 自分の受取額（満額）のみ。手数料・販売者請求は非表示 */}
+                {isProducer && <>
+                  <span style={{ color: 'var(--accent)' }}>受取額: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.producerAmount)}</b></span>
+                  {hasBreakdown && <span style={{ gridColumn: '1/-1', color: 'var(--muted)', fontSize: 11 }}>内訳　実売 {yen(t.retailAmount)} ／ 割引 {yen(t.discountAmount)} ／ 惣菜 {yen(t.souzaiAmount)}</span>}
+                </>}
+
+                {/* 販売者: 自分の請求（支払）額のみ。生産者請求・手数料は非表示 */}
+                {isSeller && <>
+                  <span style={{ color: 'var(--accent2)' }}>ご請求額: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.sellerAmount)}</b></span>
+                </>}
               </div>
 
               {/* アクション */}
