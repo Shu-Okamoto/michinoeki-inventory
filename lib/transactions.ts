@@ -101,7 +101,8 @@ function initTxTables(): Promise<void> {
   if (!initPromise) {
     initPromise = withRetry(async () => {
       const sql = getSql()
-      await sql`
+      // 初期化DDLは1往復にまとめる（プーラー越しの往復遅延を避けるため）
+      await sql.unsafe(`
         CREATE TABLE IF NOT EXISTS iwkagri_transactions (
           id TEXT PRIMARY KEY,
           org TEXT NOT NULL,
@@ -120,19 +121,16 @@ function initTxTables(): Promise<void> {
           invoice_id TEXT,
           created_at TIMESTAMP DEFAULT NOW(),
           updated_at TIMESTAMP DEFAULT NOW()
-        )
-      `
-      await sql`CREATE INDEX IF NOT EXISTS idx_iwkagri_tx_org_status ON iwkagri_transactions (org, status)`
-      await sql`CREATE INDEX IF NOT EXISTS idx_iwkagri_tx_org_date ON iwkagri_transactions (org, date)`
-      await sql`CREATE INDEX IF NOT EXISTS idx_iwkagri_tx_invoice ON iwkagri_transactions (invoice_id)`
-      // 部分決算・翌月繰越のための追加カラム（既存テーブルにも後付け）
-      await sql`ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS settled_qty INTEGER`
-      await sql`ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS carry_from_id TEXT`
-      await sql`ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS retrieved_qty INTEGER NOT NULL DEFAULT 0`
-      await sql`ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS souzai_qty INTEGER NOT NULL DEFAULT 0`
-      await sql`ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discount_qty INTEGER NOT NULL DEFAULT 0`
-      await sql`ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discount_unit_price INTEGER NOT NULL DEFAULT 0`
-      await sql`
+        );
+        CREATE INDEX IF NOT EXISTS idx_iwkagri_tx_org_status ON iwkagri_transactions (org, status);
+        CREATE INDEX IF NOT EXISTS idx_iwkagri_tx_org_date ON iwkagri_transactions (org, date);
+        CREATE INDEX IF NOT EXISTS idx_iwkagri_tx_invoice ON iwkagri_transactions (invoice_id);
+        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS settled_qty INTEGER;
+        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS carry_from_id TEXT;
+        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS retrieved_qty INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS souzai_qty INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discount_qty INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discount_unit_price INTEGER NOT NULL DEFAULT 0;
         CREATE TABLE IF NOT EXISTS iwkagri_invoices (
           id TEXT PRIMARY KEY,
           org TEXT NOT NULL,
@@ -144,9 +142,9 @@ function initTxTables(): Promise<void> {
           total INTEGER NOT NULL DEFAULT 0,
           status TEXT NOT NULL DEFAULT 'issued',
           created_at TIMESTAMP DEFAULT NOW()
-        )
-      `
-      await sql`CREATE INDEX IF NOT EXISTS idx_iwkagri_invoices_org_period ON iwkagri_invoices (org, period)`
+        );
+        CREATE INDEX IF NOT EXISTS idx_iwkagri_invoices_org_period ON iwkagri_invoices (org, period);
+      `)
     }).catch(err => { initPromise = null; throw err })
   }
   return initPromise

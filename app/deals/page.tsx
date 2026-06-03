@@ -41,11 +41,14 @@ export default function DealsPage() {
   const [qty, setQty] = useState('')
   const [date, setDate] = useState(today())
 
-  function load() {
+  function loadTx() {
     fetch('/api/transactions').then(r => r.json()).then(d => setTx(d.transactions || []))
-    fetch('/api/inventory').then(r => r.json()).then(setMaster)
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    loadTx()
+    // マスタ（生産者・商品・納品先）は初回のみ取得
+    fetch('/api/inventory').then(r => r.json()).then(setMaster)
+  }, [])
 
   function showToast(m: string) { setToast(m); setTimeout(() => setToast(''), 2800) }
 
@@ -57,7 +60,7 @@ export default function DealsPage() {
     const j = await res.json().catch(() => ({}))
     if (!res.ok) { showToast('⚠️ ' + (j.error || '失敗しました')); return false }
     if (okMsg) showToast(okMsg)
-    load()
+    loadTx()
     return true
   }
 
