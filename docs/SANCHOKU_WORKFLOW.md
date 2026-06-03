@@ -56,9 +56,14 @@
 
 - **販売の累積入力**: 販売店がレジ通過を数日かけて累積入力（sales_qty を更新）。
 - **完売 → 自動成立**: `sales_qty + retrieved_qty ≧ delivery_qty` で自動的に `completed`。
-- **生産者の引き取り**: 生産者が売れ残りを引き取り（`retrieved_qty` を記録）。
-  引き取りで `sales_qty + retrieved_qty ≧ delivery_qty` に達したらワークフロー完了(`completed`)。
-- **棚残**: `棚残 = delivery_qty − sales_qty − retrieved_qty`（販売可能な残り）。
+- **棚残の処理チャネル（販売者が選択）**:
+  - **割引販売**: 定価〜半額（`DISCOUNT_FLOOR=50%`）の単価で販売。`discount_qty` × `discount_unit_price`。
+  - **惣菜利用**: 販売者が単価の3割（`SOUZAI_RATE=30%`）で買取。`souzai_qty`。
+  - **引取依頼**: 生産者が引き取り（無償・請求対象外）。`retrieved_qty`（数量は販売者が確定）。
+- いずれも `sales_qty + discount_qty + souzai_qty + retrieved_qty ≧ delivery_qty` に達したら完了(`completed`)。
+- **棚残**: `delivery_qty − sales_qty − discount_qty − souzai_qty − retrieved_qty`（販売可能な残り）。
+- **請求金額（産直）**: 実売(定価) ＋ 割引販売(割引単価) ＋ 惣菜(3割) の合算。引取は無償。
+  すべて同じ手数料方式（生産者＝満額／販売者＝満額＋手数料）。
 - **月末の部分決算**: 月末締めでは、確認済み以降・未精算の取引を一括決算する。
   - 産直: **実売数(sales_qty)で部分決算**。請求は実際に売れた分のみ。
   - 卸売: **納品数(delivery_qty)で全額決算**。

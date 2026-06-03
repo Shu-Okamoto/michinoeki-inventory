@@ -52,8 +52,8 @@ export default function SettlementPage() {
   const previewSeller = groupBy(pending, 'seller')
   const pendingCommission = pending.reduce((a, t) => a + (t.commission || 0), 0)
   const pendingSales = pending.reduce((a, t) => a + (t.amount || 0), 0)
-  // 産直の棚残（納品−実売−引取）＝翌月へ繰越される分
-  const onShelf = (t: any) => Math.max(0, (t.deliveryQty || 0) - (t.salesQty || 0) - (t.retrievedQty || 0))
+  // 産直の棚残（納品−実売−引取−惣菜−割引）＝翌月へ繰越される分
+  const onShelf = (t: any) => Math.max(0, (t.deliveryQty || 0) - (t.salesQty || 0) - (t.retrievedQty || 0) - (t.souzaiQty || 0) - (t.discountQty || 0))
   const carryovers = pending.filter(t => t.type !== '卸売' && t.status !== 'completed' && onShelf(t) > 0)
   const carryQty = carryovers.reduce((a, t) => a + onShelf(t), 0)
 
