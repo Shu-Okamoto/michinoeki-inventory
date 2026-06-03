@@ -175,12 +175,13 @@ export async function POST(req: NextRequest) {
       const existing = list.find((p: any) => p.name === payload.name)
       const unitPrice = Number(payload.unitPrice) || 0
       if (existing) {
-        // 既存商品は別名・単価を更新（単価編集を兼ねる）
+        // 既存商品は別名・単価・生産者を更新（単価編集を兼ねる）
         if (payload.aliases !== undefined) existing.aliases = payload.aliases || ''
         if (payload.unitPrice !== undefined) existing.unitPrice = unitPrice
+        if (payload.producer !== undefined) existing.producer = payload.producer || ''
         existing.status = 'approved'
       } else {
-        list.push({ name: payload.name, aliases: payload.aliases || '', unitPrice, status: 'approved' })
+        list.push({ name: payload.name, producer: payload.producer || '', aliases: payload.aliases || '', unitPrice, status: 'approved' })
       }
       await kvSet(ORG, 'products', list)
       return NextResponse.json({ ok: true })
@@ -194,8 +195,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: '同名の商品が既にあります' }, { status: 400 })
       }
       const status = role === '組合管理者' ? 'approved' : 'pending'
+      // 生産者の申請は自分を生産者に。組合は指定可。
+      const producer = role === '生産者' ? (session.user?.name || '') : (payload.producer || '')
       list.push({
         name: payload.name,
+        producer,
         aliases: payload.aliases || '',
         unitPrice: Number(payload.unitPrice) || 0,
         status,
@@ -211,6 +215,7 @@ export async function POST(req: NextRequest) {
         p.status = 'approved'
         if (payload.unitPrice !== undefined) p.unitPrice = Number(payload.unitPrice) || 0
         if (payload.aliases !== undefined) p.aliases = payload.aliases || ''
+        if (payload.producer !== undefined) p.producer = payload.producer || ''
       }
       await kvSet(ORG, 'products', list)
       return NextResponse.json({ ok: true })
