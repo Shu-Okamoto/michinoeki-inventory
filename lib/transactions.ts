@@ -24,9 +24,12 @@ export interface Transaction {
   shipQty: number
   deliveryQty: number
   salesQty: number
+  retrievedQty: number     // 生産者が引き取った数（産直の売れ残り回収）
   unitPrice: number
   commissionRate: number
   invoiceId?: string
+  settledQty?: number      // 精算時に請求した数量（部分決算のスナップショット）
+  carryFromId?: string     // 翌月繰越の元取引ID
   createdAt?: string
   updatedAt?: string
   // 算出値（読み取り時に付与）
@@ -94,6 +97,10 @@ function initTxTables(): Promise<void> {
       await sql`CREATE INDEX IF NOT EXISTS idx_iwkagri_tx_org_status ON iwkagri_transactions (org, status)`
       await sql`CREATE INDEX IF NOT EXISTS idx_iwkagri_tx_org_date ON iwkagri_transactions (org, date)`
       await sql`CREATE INDEX IF NOT EXISTS idx_iwkagri_tx_invoice ON iwkagri_transactions (invoice_id)`
+      // 部分決算・翌月繰越のための追加カラム（既存テーブルにも後付け）
+      await sql`ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS settled_qty INTEGER`
+      await sql`ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS carry_from_id TEXT`
+      await sql`ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS retrieved_qty INTEGER NOT NULL DEFAULT 0`
       await sql`
         CREATE TABLE IF NOT EXISTS iwkagri_invoices (
           id TEXT PRIMARY KEY,
@@ -129,9 +136,12 @@ function rowToTx(r: any): Transaction {
     shipQty: Number(r.ship_qty) || 0,
     deliveryQty: Number(r.delivery_qty) || 0,
     salesQty: Number(r.sales_qty) || 0,
+    retrievedQty: Number(r.retrieved_qty) || 0,
     unitPrice: Number(r.unit_price) || 0,
     commissionRate: Number(r.commission_rate) || 0,
     invoiceId: r.invoice_id ?? undefined,
+    settledQty: r.settled_qty != null ? Number(r.settled_qty) : undefined,
+    carryFromId: r.carry_from_id ?? undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }
@@ -186,13 +196,27 @@ export async function confirmTransaction(org: string, id: string, fields: { deli
   })
 }
 
-// 販売者: 販売数を入力して sales_entered へ
+// 販売者: 販売数（レジ通過の累積）を入力。
+// 産直は完売（販売数 ≧ 納品数）で自動的に成立(completed)。卸売は sales_entered のまま。
 export async function enterSales(org: string, id: string, salesQty: number): Promise<void> {
   await initTxTables()
   await withRetry(async () => {
     const sql = getSql()
+    const rows = await sql`SELECT type, delivery_qty, retrieved_qty FROM iwkagri_transactions WHERE org = ${org} AND id = ${id}`
+    if (!rows.length) return
+    const type = rows[0].type
+    const dq = Number(rows[0].delivery_qty) || 0
+    const rq = Number(rows[0].retrieved_qty) || 0
+    let q = Number(salesQty) || 0
+    if (q < 0) q = 0
+    // 産直は「納品数 − 引取数」を超えて販売できない（棚残を負にしない）
+    const sellable = dq - rq
+    if (type !== '卸売' && dq > 0 && q > sellable) q = Math.max(0, sellable)
+    // 完売（実売＋引取が納品数に到達）で自動成立
+    const soldOut = type !== '卸売' && dq > 0 && (q + rq) >= dq
+    const newStatus = soldOut ? 'completed' : 'sales_entered'
     await sql`
-      UPDATE iwkagri_transactions SET sales_qty = ${Number(salesQty) || 0}, status = 'sales_entered', updated_at = NOW()
+      UPDATE iwkagri_transactions SET sales_qty = ${q}, status = ${newStatus}, updated_at = NOW()
       WHERE org = ${org} AND id = ${id} AND status IN ('confirmed','sales_entered')
     `
   })
@@ -206,6 +230,29 @@ export async function completeTransaction(org: string, id: string): Promise<void
     await sql`
       UPDATE iwkagri_transactions SET status = 'completed', updated_at = NOW()
       WHERE org = ${org} AND id = ${id} AND status IN ('sales_entered','confirmed')
+    `
+  })
+}
+
+// 生産者: 売れ残りの引き取りを記録（産直のみ）。
+// 実売＋引取が納品数に達したらワークフロー完了(completed)。
+export async function retrieveTransaction(org: string, id: string, retrievedQty: number): Promise<void> {
+  await initTxTables()
+  await withRetry(async () => {
+    const sql = getSql()
+    const rows = await sql`SELECT type, delivery_qty, sales_qty FROM iwkagri_transactions WHERE org = ${org} AND id = ${id}`
+    if (!rows.length || rows[0].type === '卸売') return
+    const dq = Number(rows[0].delivery_qty) || 0
+    const sq = Number(rows[0].sales_qty) || 0
+    let r = Number(retrievedQty) || 0
+    if (r < 0) r = 0
+    // 引取数は「納品数 − 実売数」を上限（累積の絶対値）
+    if (dq > 0 && r > dq - sq) r = Math.max(0, dq - sq)
+    const done = dq > 0 && (sq + r) >= dq
+    await sql`
+      UPDATE iwkagri_transactions
+      SET retrieved_qty = ${r}, status = ${done ? 'completed' : 'sales_entered'}, updated_at = NOW()
+      WHERE org = ${org} AND id = ${id} AND status IN ('confirmed','sales_entered')
     `
   })
 }
@@ -280,27 +327,68 @@ export async function getTransaction(org: string, id: string): Promise<Transacti
   })
 }
 
+// 期間(YYYY-MM)の翌月1日(YYYY-MM-01)を返す
+function nextMonthFirst(period: string): string {
+  const [y, m] = period.split('-').map(Number)
+  // m は1始まり。Date.UTC の月インデックス m は「翌月」を指す。
+  return new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10)
+}
+
 // ---- 月次精算・請求書 ----
-// 指定期間(YYYY-MM)の completed かつ未精算の取引から、生産者請求書/販売者請求書を発行する。
-export async function generateInvoices(org: string, period: string): Promise<{ producer: Invoice[]; seller: Invoice[]; count: number }> {
+// 指定期間(YYYY-MM)の精算対象（確認済み以降・未精算）を一括決算する。
+//  - 産直: 実売数で部分決算し、売れ残り(納品数−実売数)は翌月1日付の新規取引(販売待ち)へ繰越
+//  - 卸売: 納品数で全額決算（繰越なし）
+// 生産者請求=満額 / 販売者請求=満額＋手数料 で集計して請求書を発行する。
+export async function generateInvoices(org: string, period: string): Promise<{ producer: Invoice[]; seller: Invoice[]; count: number; carried: number }> {
   await initTxTables()
   return withRetry(async () => {
     const sql = getSql()
     const rows = await sql`
       SELECT * FROM iwkagri_transactions
-      WHERE org = ${org} AND status = 'completed' AND invoice_id IS NULL AND date LIKE ${period + '%'}
+      WHERE org = ${org} AND invoice_id IS NULL AND date LIKE ${period + '%'}
+        AND status IN ('confirmed','sales_entered','completed')
     `
     const txs = rows.map(rowToTx)
-    if (txs.length === 0) return { producer: [], seller: [], count: 0 }
+    if (txs.length === 0) return { producer: [], seller: [], count: 0, carried: 0 }
 
-    // 生産者ごと（満額）/ 販売者ごと（満額＋手数料）に集計
+    const carryDate = nextMonthFirst(period)
+    let carried = 0
+    const billed: Transaction[] = []
+
+    for (const t of txs) {
+      const isWholesale = t.type === '卸売'
+      const billQty = isWholesale ? (t.deliveryQty || 0) : (t.salesQty || 0)  // 請求数量
+      // 取引を精算済に（請求数量をスナップショット）
+      await sql`UPDATE iwkagri_transactions
+        SET status = 'settled', settled_qty = ${billQty}, invoice_id = ${period}, updated_at = NOW()
+        WHERE org = ${org} AND id = ${t.id}`
+      billed.push(t)
+      // 産直の棚残（納品−実売−引取）は翌月へ繰越（新規取引・販売待ち）
+      if (!isWholesale) {
+        const remainder = (t.deliveryQty || 0) - (t.salesQty || 0) - (t.retrievedQty || 0)
+        if (remainder > 0) {
+          const nid = uid()
+          await sql`INSERT INTO iwkagri_transactions
+            (id, org, type, status, date, producer, seller, location, product, ship_qty, delivery_qty, sales_qty, unit_price, commission_rate, carry_from_id)
+            VALUES (${nid}, ${org}, ${t.type}, 'confirmed', ${carryDate}, ${t.producer}, ${t.seller}, ${t.location}, ${t.product},
+                    ${remainder}, ${remainder}, 0, ${t.unitPrice}, ${t.commissionRate}, ${t.id})`
+          carried++
+        }
+      }
+    }
+
+    // 請求数量が0のもの（その期間に1個も売れなかった産直）は請求書に計上しない
+    const billable = billed.filter(t => (t.type === '卸売' ? (t.deliveryQty || 0) : (t.salesQty || 0)) > 0)
+
     const byProducer = new Map<string, Transaction[]>()
     const bySeller = new Map<string, Transaction[]>()
-    for (const t of txs) {
+    for (const t of billable) {
       const pk = t.producer || '（未割当）'
       const sk = t.seller || '（未割当）'
-      ;(byProducer.get(pk) || byProducer.set(pk, []).get(pk)!).push(t)
-      ;(bySeller.get(sk) || bySeller.set(sk, []).get(sk)!).push(t)
+      if (!byProducer.has(pk)) byProducer.set(pk, [])
+      byProducer.get(pk)!.push(t)
+      if (!bySeller.has(sk)) bySeller.set(sk, [])
+      bySeller.get(sk)!.push(t)
     }
 
     const producerInvoices: Invoice[] = []
@@ -312,10 +400,6 @@ export async function generateInvoices(org: string, period: string): Promise<{ p
       producerInvoices.push(inv)
       await sql`INSERT INTO iwkagri_invoices (id, org, period, kind, party, subtotal, commission, total, status)
         VALUES (${inv.id}, ${org}, ${period}, 'producer', ${party}, ${subtotal}, 0, ${subtotal}, 'issued')`
-      // この生産者・期間の取引に producer 側の請求IDを紐付け & settled 化
-      for (const t of list) {
-        await sql`UPDATE iwkagri_transactions SET status = 'settled', updated_at = NOW() WHERE org = ${org} AND id = ${t.id}`
-      }
     }
 
     for (const [party, list] of bySeller) {
@@ -328,11 +412,7 @@ export async function generateInvoices(org: string, period: string): Promise<{ p
         VALUES (${inv.id}, ${org}, ${period}, 'seller', ${party}, ${subtotal}, ${commission}, ${total}, 'issued')`
     }
 
-    // 取引に「精算済」バッチの目印（producer側invoiceを代表IDとして付与）
-    // ※ 取引は producer/seller 両請求にまたがるため、invoice_id は「精算済」マークとして利用
-    await sql`UPDATE iwkagri_transactions SET invoice_id = ${period} WHERE org = ${org} AND status = 'settled' AND date LIKE ${period + '%'} AND invoice_id IS NULL`
-
-    return { producer: producerInvoices, seller: sellerInvoices, count: txs.length }
+    return { producer: producerInvoices, seller: sellerInvoices, count: billed.length, carried }
   })
 }
 
