@@ -34,7 +34,8 @@ function initRecordTables(): Promise<void> {
   if (!initPromise) {
     initPromise = withRetry(async () => {
       const sql = getSql()
-      await sql`
+      // 初期化DDLは1往復にまとめる（プーラー越しの往復遅延を避けるため）
+      await sql.unsafe(`
         CREATE TABLE IF NOT EXISTS iwkagri_sales (
           id TEXT PRIMARY KEY,
           org TEXT NOT NULL,
@@ -47,11 +48,9 @@ function initRecordTables(): Promise<void> {
           message_id TEXT,
           unit_price INTEGER NOT NULL DEFAULT 0,
           created_at TIMESTAMP DEFAULT NOW()
-        )
-      `
-      await sql`CREATE INDEX IF NOT EXISTS idx_iwkagri_sales_org_date ON iwkagri_sales (org, date)`
-      await sql`CREATE INDEX IF NOT EXISTS idx_iwkagri_sales_org_producer ON iwkagri_sales (org, producer)`
-      await sql`
+        );
+        CREATE INDEX IF NOT EXISTS idx_iwkagri_sales_org_date ON iwkagri_sales (org, date);
+        CREATE INDEX IF NOT EXISTS idx_iwkagri_sales_org_producer ON iwkagri_sales (org, producer);
         CREATE TABLE IF NOT EXISTS iwkagri_shipments (
           id TEXT PRIMARY KEY,
           org TEXT NOT NULL,
@@ -62,12 +61,11 @@ function initRecordTables(): Promise<void> {
           qty INTEGER NOT NULL DEFAULT 0,
           unit_price INTEGER NOT NULL DEFAULT 0,
           created_at TIMESTAMP DEFAULT NOW()
-        )
-      `
-      await sql`CREATE INDEX IF NOT EXISTS idx_iwkagri_shipments_org ON iwkagri_shipments (org)`
-      // 既存テーブルへの後方互換: 単価列が無ければ追加
-      await sql`ALTER TABLE iwkagri_sales ADD COLUMN IF NOT EXISTS unit_price INTEGER NOT NULL DEFAULT 0`
-      await sql`ALTER TABLE iwkagri_shipments ADD COLUMN IF NOT EXISTS unit_price INTEGER NOT NULL DEFAULT 0`
+        );
+        CREATE INDEX IF NOT EXISTS idx_iwkagri_shipments_org ON iwkagri_shipments (org);
+        ALTER TABLE iwkagri_sales ADD COLUMN IF NOT EXISTS unit_price INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE iwkagri_shipments ADD COLUMN IF NOT EXISTS unit_price INTEGER NOT NULL DEFAULT 0;
+      `)
     }).catch(err => { initPromise = null; throw err })
   }
   return initPromise

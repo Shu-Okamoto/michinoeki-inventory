@@ -9,7 +9,8 @@ export function getSql() {
   if (!_sql) {
     const url = process.env.POSTGRES_URL
     if (!url) throw new Error('POSTGRES_URL is not set')
-    _sql = postgres(url, { ssl: 'require', prepare: false, max: 1, idle_timeout: 20, connect_timeout: 15 })
+    // max>1 で Promise.all のクエリを並列化（プーラー越しの往復遅延を直列に積み上げない）
+    _sql = postgres(url, { ssl: 'require', prepare: false, max: 4, idle_timeout: 20, connect_timeout: 15 })
   }
   return _sql
 }
