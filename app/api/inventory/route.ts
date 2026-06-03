@@ -78,6 +78,7 @@ export async function GET(req: NextRequest) {
 // 管理者のみ許可されるアクション
 const ADMIN_ACTIONS = new Set([
   'add_location', 'remove_location', 'add_product', 'remove_product',
+  'approve_product', 'reject_product',
   'add_producer', 'update_producer', 'remove_producer',
   'add_announcement', 'remove_announcement',
   'save_settings', 'save_gmail_settings', 'clear_sales', 'send_sales_mail',
@@ -169,6 +170,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
     case 'add_product': {
+      // 組合管理者が直接登録（承認済みとして追加）
       const list: any[] = await kvGet(ORG, 'products') || []
       const existing = list.find((p: any) => p.name === payload.name)
       const unitPrice = Number(payload.unitPrice) || 0
@@ -176,10 +178,47 @@ export async function POST(req: NextRequest) {
         // 既存商品は別名・単価を更新（単価編集を兼ねる）
         if (payload.aliases !== undefined) existing.aliases = payload.aliases || ''
         if (payload.unitPrice !== undefined) existing.unitPrice = unitPrice
+        existing.status = 'approved'
       } else {
-        list.push({ name: payload.name, aliases: payload.aliases || '', unitPrice })
+        list.push({ name: payload.name, aliases: payload.aliases || '', unitPrice, status: 'approved' })
       }
       await kvSet(ORG, 'products', list)
+      return NextResponse.json({ ok: true })
+    }
+    case 'propose_product': {
+      // 生産者（または組合管理者）が商品を申請。生産者の申請は「承認待ち」
+      if (role !== '生産者' && role !== '組合管理者') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
+      if (!payload.name) return NextResponse.json({ error: '商品名が必要です' }, { status: 400 })
+      const list: any[] = await kvGet(ORG, 'products') || []
+      if (list.find((p: any) => p.name === payload.name)) {
+        return NextResponse.json({ error: '同名の商品が既にあります' }, { status: 400 })
+      }
+      const status = role === '組合管理者' ? 'approved' : 'pending'
+      list.push({
+        name: payload.name,
+        aliases: payload.aliases || '',
+        unitPrice: Number(payload.unitPrice) || 0,
+        status,
+        proposedBy: session.user?.name || '',
+      })
+      await kvSet(ORG, 'products', list)
+      return NextResponse.json({ ok: true, status })
+    }
+    case 'approve_product': {
+      const list: any[] = await kvGet(ORG, 'products') || []
+      const p = list.find((x: any) => x.name === payload.name)
+      if (p) {
+        p.status = 'approved'
+        if (payload.unitPrice !== undefined) p.unitPrice = Number(payload.unitPrice) || 0
+        if (payload.aliases !== undefined) p.aliases = payload.aliases || ''
+      }
+      await kvSet(ORG, 'products', list)
+      return NextResponse.json({ ok: true })
+    }
+    case 'reject_product': {
+      // 承認待ちの申請を却下（削除）
+      const list: any[] = await kvGet(ORG, 'products') || []
+      await kvSet(ORG, 'products', list.filter((p: any) => !(p.name === payload.name && (p.status || 'approved') === 'pending')))
       return NextResponse.json({ ok: true })
     }
     case 'remove_product': {
