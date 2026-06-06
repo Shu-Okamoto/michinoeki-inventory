@@ -28,6 +28,8 @@ export interface Transaction {
   souzaiQty: number          // 惣菜利用（販売者が3割価格で買取）した数
   discountQty: number        // 割引販売した数（産直）
   discountUnitPrice: number  // 割引販売の単価（円・半額〜定価の範囲）
+  unit: string               // 単位（袋/本/KG など・商品マスタからスナップショット）
+  lastSalesDate?: string     // 直近に売上登録した日（YYYY-MM-DD）
   unitPrice: number
   commissionRate: number
   invoiceId?: string
@@ -131,6 +133,8 @@ function initTxTables(): Promise<void> {
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS souzai_qty INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discount_qty INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discount_unit_price INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS unit TEXT;
+        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS last_sales_date TEXT;
         CREATE TABLE IF NOT EXISTS iwkagri_invoices (
           id TEXT PRIMARY KEY,
           org TEXT NOT NULL,
@@ -169,6 +173,8 @@ function rowToTx(r: any): Transaction {
     souzaiQty: Number(r.souzai_qty) || 0,
     discountQty: Number(r.discount_qty) || 0,
     discountUnitPrice: Number(r.discount_unit_price) || 0,
+    unit: r.unit || '',
+    lastSalesDate: r.last_sales_date || undefined,
     unitPrice: Number(r.unit_price) || 0,
     commissionRate: Number(r.commission_rate) || 0,
     invoiceId: r.invoice_id ?? undefined,
@@ -189,6 +195,7 @@ export interface CreateTxInput {
   location?: string
   product: string
   shipQty: number
+  unit?: string
   unitPrice?: number
   commissionRate?: number
 }
@@ -200,14 +207,40 @@ export async function createTransaction(org: string, input: CreateTxInput): Prom
     const sql = getSql()
     await sql`
       INSERT INTO iwkagri_transactions
-        (id, org, type, status, date, producer, seller, location, product, ship_qty, unit_price, commission_rate)
+        (id, org, type, status, date, producer, seller, location, product, ship_qty, unit, unit_price, commission_rate)
       VALUES
         (${id}, ${org}, ${input.type || '産直'}, 'shipped', ${input.date || ''}, ${input.producer || ''},
          ${input.seller || ''}, ${input.location || ''}, ${input.product || ''}, ${Number(input.shipQty) || 0},
-         ${Number(input.unitPrice) || 0}, ${Number(input.commissionRate) || 0})
+         ${input.unit || ''}, ${Number(input.unitPrice) || 0}, ${Number(input.commissionRate) || 0})
     `
   })
   return id
+}
+
+// 売上登録（その日の販売数を加算）。残数を超えない範囲で累積し、完売で自動成立。
+// 残数があれば sales_entered のまま＝翌日も進行中として表示される。
+export async function addSales(org: string, id: string, addQty: number, date?: string): Promise<void> {
+  await initTxTables()
+  await withRetry(async () => {
+    const sql = getSql()
+    const rows = await sql`SELECT type, delivery_qty, sales_qty, retrieved_qty, souzai_qty, discount_qty FROM iwkagri_transactions WHERE org = ${org} AND id = ${id}`
+    if (!rows.length) return
+    const r = rows[0]
+    const dq = Number(r.delivery_qty) || 0
+    const used = (Number(r.sales_qty) || 0) + (Number(r.retrieved_qty) || 0) + (Number(r.souzai_qty) || 0) + (Number(r.discount_qty) || 0)
+    const shelf = dq - used // 棚残
+    let add = Number(addQty) || 0
+    if (add < 0) add = 0
+    if (r.type !== '卸売' && dq > 0 && add > shelf) add = Math.max(0, shelf) // 棚残を超えない
+    const newSales = (Number(r.sales_qty) || 0) + add
+    const soldOut = r.type !== '卸売' && dq > 0 && (used + add) >= dq
+    await sql`
+      UPDATE iwkagri_transactions
+      SET sales_qty = ${newSales}, last_sales_date = ${date || new Date().toISOString().slice(0, 10)},
+          status = ${soldOut ? 'completed' : 'sales_entered'}, updated_at = NOW()
+      WHERE org = ${org} AND id = ${id} AND status IN ('confirmed','sales_entered')
+    `
+  })
 }
 
 // 組合: 納品数を確定・単価/手数料率を調整して confirmed へ
@@ -436,9 +469,9 @@ export async function generateInvoices(org: string, period: string): Promise<{ p
         if (remainder > 0) {
           const nid = uid()
           await sql`INSERT INTO iwkagri_transactions
-            (id, org, type, status, date, producer, seller, location, product, ship_qty, delivery_qty, sales_qty, unit_price, commission_rate, carry_from_id)
+            (id, org, type, status, date, producer, seller, location, product, ship_qty, delivery_qty, sales_qty, unit, unit_price, commission_rate, carry_from_id)
             VALUES (${nid}, ${org}, ${t.type}, 'confirmed', ${carryDate}, ${t.producer}, ${t.seller}, ${t.location}, ${t.product},
-                    ${remainder}, ${remainder}, 0, ${t.unitPrice}, ${t.commissionRate}, ${t.id})`
+                    ${remainder}, ${remainder}, 0, ${t.unit || ''}, ${t.unitPrice}, ${t.commissionRate}, ${t.id})`
           carried++
         }
       }

@@ -188,6 +188,8 @@ export default function DealsPage() {
           const meta = STATUS_META[t.status] || STATUS_META.shipped
           const basisQty = t.type === '卸売' ? t.deliveryQty : (t.billingQty ?? t.salesQty)
           const hasBreakdown = t.type !== '卸売' && ((t.discountQty || 0) > 0 || (t.souzaiQty || 0) > 0)
+          const u = t.unit || ''
+          const shelf = Math.max(0, (t.deliveryQty || 0) - (t.salesQty || 0) - (t.retrievedQty || 0) - (t.souzaiQty || 0) - (t.discountQty || 0))
           return (
             <div key={t.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
               {/* ヘッダー */}
@@ -207,17 +209,20 @@ export default function DealsPage() {
 
               {/* 数量の流れ */}
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12, fontFamily: 'Space Mono,monospace', fontSize: 13 }}>
-                <span style={{ color: 'var(--muted)', fontSize: 11 }}>出荷</span><b>{t.shipQty}</b>
+                <span style={{ color: 'var(--muted)', fontSize: 11 }}>出荷</span><b>{t.shipQty}{u}</b>
                 <span style={{ color: 'var(--muted)' }}>→</span>
-                <span style={{ color: 'var(--muted)', fontSize: 11 }}>納品</span><b>{t.deliveryQty}</b>
+                <span style={{ color: 'var(--muted)', fontSize: 11 }}>納品</span><b>{t.deliveryQty}{u}</b>
                 <span style={{ color: 'var(--muted)' }}>→</span>
-                <span style={{ color: 'var(--muted)', fontSize: 11 }}>実売</span><b>{t.salesQty}</b>
-                {t.type !== '卸売' && (t.discountQty || 0) > 0 && (<><span style={{ color: 'var(--muted)' }}>/</span><span style={{ color: 'var(--muted)', fontSize: 11 }}>割引</span><b>{t.discountQty}</b></>)}
-                {t.type !== '卸売' && (t.souzaiQty || 0) > 0 && (<><span style={{ color: 'var(--muted)' }}>/</span><span style={{ color: 'var(--muted)', fontSize: 11 }}>惣菜</span><b>{t.souzaiQty}</b></>)}
-                {t.type !== '卸売' && (t.retrievedQty || 0) > 0 && (<><span style={{ color: 'var(--muted)' }}>/</span><span style={{ color: 'var(--muted)', fontSize: 11 }}>引取</span><b>{t.retrievedQty}</b></>)}
+                <span style={{ color: 'var(--muted)', fontSize: 11 }}>実売</span><b>{t.salesQty}{u}</b>
+                {t.type !== '卸売' && (t.discountQty || 0) > 0 && (<><span style={{ color: 'var(--muted)' }}>/</span><span style={{ color: 'var(--muted)', fontSize: 11 }}>割引</span><b>{t.discountQty}{u}</b></>)}
+                {t.type !== '卸売' && (t.souzaiQty || 0) > 0 && (<><span style={{ color: 'var(--muted)' }}>/</span><span style={{ color: 'var(--muted)', fontSize: 11 }}>惣菜</span><b>{t.souzaiQty}{u}</b></>)}
+                {t.type !== '卸売' && (t.retrievedQty || 0) > 0 && (<><span style={{ color: 'var(--muted)' }}>/</span><span style={{ color: 'var(--muted)', fontSize: 11 }}>引取</span><b>{t.retrievedQty}{u}</b></>)}
                 {t.type !== '卸売' && (<span style={{ marginLeft: 6, fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'var(--surface2)', color: 'var(--text)' }}>
-                  棚残 {Math.max(0, (t.deliveryQty || 0) - (t.salesQty || 0) - (t.retrievedQty || 0) - (t.souzaiQty || 0) - (t.discountQty || 0))}
+                  棚残 {shelf}{u}
                 </span>)}
+                {t.lastSalesDate && (t.status === 'confirmed' || t.status === 'sales_entered') && (
+                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>（最終売上 {t.lastSalesDate}）</span>
+                )}
               </div>
 
               {/* 金額（ロール別に表示を統制） */}
@@ -260,11 +265,11 @@ export default function DealsPage() {
                   </>
                 )}
 
-                {/* 販売者: 販売数入力 */}
+                {/* 販売者: 当日の売上登録（その日の販売数を加算。残数があれば翌日も進行中） */}
                 {(isSeller || isAdmin) && (t.status === 'confirmed' || t.status === 'sales_entered') && (
                   <>
-                    <div><label style={s.miniLabel}>販売数</label><input style={s.miniInput} type="number" value={dv(t, 'salesQty', t.salesQty || t.deliveryQty)} onChange={e => setDraft(t.id, 'salesQty', e.target.value)} /></div>
-                    <button style={s.btn2} onClick={() => action('enter_sales', { id: t.id, salesQty: Number(dv(t, 'salesQty', t.salesQty || t.deliveryQty)) }, '✅ 販売数を記録しました')}>販売数を記録</button>
+                    <div><label style={s.miniLabel}>本日の販売数（棚残{shelf}{u}）</label><input style={s.miniInput} type="number" min="0" max={shelf} placeholder="0" value={dv(t, 'addQty', '')} onChange={e => setDraft(t.id, 'addQty', e.target.value)} /></div>
+                    <button style={s.btn} onClick={async () => { const ok = await action('add_sales', { id: t.id, addQty: Number(dv(t, 'addQty', 0)) }, '✅ 本日の売上を登録しました'); if (ok) setDraft(t.id, 'addQty', '') }}>売上登録</button>
                   </>
                 )}
 
