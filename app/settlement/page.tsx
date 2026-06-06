@@ -100,8 +100,9 @@ export default function SettlementPage() {
     const sell = groupBy(base, 'seller')
     const esc = (s: any) => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' } as any)[c])
     const rowsOf = (g: Grp, kind: 'producer' | 'seller') => g.tx.map(t => {
-      const bq = t.type === '卸売' ? t.deliveryQty : t.salesQty
-      return `<tr><td>${esc(t.date)}</td><td>${esc(t.product)}</td><td>${esc(t.type)}</td><td class="r">${bq}</td><td class="r">${yen(t.unitPrice)}</td><td class="r">${yen(t.amount)}</td>${kind === 'seller' ? `<td class="r">${yen(t.commission)}</td>` : ''}</tr>`
+      const bq = t.type === '卸売' ? t.deliveryQty : ((t.salesQty || 0) + (t.discountQty || 0) + (t.souzaiQty || 0))
+      const u = esc(t.unit || '')
+      return `<tr><td>${esc(t.date)}</td><td>${esc(t.product)}</td><td>${esc(t.type)}</td><td class="r">${bq}${u}</td><td class="r">${yen(t.unitPrice)}</td><td class="r">${yen(t.amount)}</td>${kind === 'seller' ? `<td class="r">${yen(t.commission)}</td>` : ''}</tr>`
     }).join('')
 
     const invoiceBlock = (g: Grp, kind: 'producer' | 'seller') => {

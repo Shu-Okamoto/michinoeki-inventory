@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { kvGet } from '@/lib/db'
 import { ORG } from '@/lib/users'
 import {
-  createTransaction, confirmTransaction, enterSales, completeTransaction,
+  createTransaction, confirmTransaction, enterSales, addSales, completeTransaction,
   retrieveTransaction, souzaiTransaction, discountSaleTransaction,
   cancelTransaction, patchTransaction, deleteTransaction,
   listTransactions, generateInvoices, listInvoices, TxStatus,
@@ -38,9 +38,11 @@ function redactByRole(t: any, role: string) {
 async function defaults(product: string) {
   const products: any[] = await kvGet(ORG, 'products') || []
   const settings: any = await kvGet(ORG, 'settings') || {}
-  const unitPrice = Number(products.find((p: any) => p.name === product)?.unitPrice) || 0
+  const p = products.find((x: any) => x.name === product)
+  const unitPrice = Number(p?.unitPrice) || 0
+  const unit = p?.unit || ''
   const commissionRate = settings.commissionRate != null ? Number(settings.commissionRate) : 8
-  return { unitPrice, commissionRate }
+  return { unitPrice, unit, commissionRate }
 }
 
 export async function GET(req: NextRequest) {
@@ -89,6 +91,7 @@ export async function POST(req: NextRequest) {
         location: payload.location || '',
         product: payload.product,
         shipQty: Number(payload.shipQty) || 0,
+        unit: payload.unit != null ? payload.unit : d.unit,
         unitPrice: payload.unitPrice != null ? Number(payload.unitPrice) : d.unitPrice,
         commissionRate: payload.commissionRate != null ? Number(payload.commissionRate) : d.commissionRate,
       })
@@ -106,9 +109,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
     case 'enter_sales': {
-      // 販売者が販売数を入力
+      // 販売者が販売数を入力（累積の絶対値で設定）
       if (role !== '販売者' && role !== ADMIN) return deny()
       await enterSales(ORG, payload.id, Number(payload.salesQty) || 0)
+      return NextResponse.json({ ok: true })
+    }
+    case 'add_sales': {
+      // 売上登録：その日の販売数を加算（残数があれば翌日も進行中として継続）
+      if (role !== '販売者' && role !== ADMIN) return deny()
+      await addSales(ORG, payload.id, Number(payload.addQty) || 0, payload.date)
       return NextResponse.json({ ok: true })
     }
     case 'complete': {
