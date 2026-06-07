@@ -137,7 +137,7 @@ export default function DealsPage() {
                   if ((p.status || 'approved') !== 'approved') return false
                   const sel = isProducer ? myName : producer
                   return !p.producer || !sel || p.producer === sel
-                }).map((p: any) => <option key={p.name}>{p.name}</option>)}
+                }).map((p: any) => <option key={p.id || p.name}>{p.name}</option>)}
               </select>
             </div>
             <div>
