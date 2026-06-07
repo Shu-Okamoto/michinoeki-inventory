@@ -57,7 +57,7 @@ export default function SendPage() {
             ['納品先（道の駅）', <select style={s.input} value={loc} onChange={e=>setLoc(e.target.value)}>
               <option value="">選択</option>{data.locations.map((l:string)=><option key={l}>{l}</option>)}</select>],
             ['商品', <select style={s.input} value={prod} onChange={e=>setProd(e.target.value)}>
-              <option value="">選択</option>{data.products.filter((p:any)=>(p.status||'approved')==='approved' && (!p.producer || !producer || p.producer===producer)).map((p:any)=><option key={p.name}>{p.name}</option>)}</select>],
+              <option value="">選択</option>{data.products.filter((p:any)=>(p.status||'approved')==='approved' && (!p.producer || !producer || p.producer===producer)).map((p:any)=><option key={p.id || p.name}>{p.name}</option>)}</select>],
             ['個数', <input style={s.input} type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)} placeholder="20" />],
             ['日付', <input style={s.input} type="date" value={date} onChange={e=>setDate(e.target.value)} />],
           ].map(([label, ctrl], i) => (

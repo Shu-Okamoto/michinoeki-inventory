@@ -95,8 +95,9 @@ export default function SettingsPage() {
             ? <p style={{fontSize:12,color:'var(--muted)'}}>まだ登録がありません</p>
             : [...data.products].sort((a:any,b:any)=>((a.status||'approved')==='pending'?-1:0)-((b.status||'approved')==='pending'?-1:0)).map((p:any) => {
               const pending = (p.status || 'approved') === 'pending'
+              const pk = p.id || p.name
               return (
-              <div key={p.name} style={{...s.row, ...(pending?{background:'#FCF6E8'}:{})}}>
+              <div key={pk} style={{...s.row, ...(pending?{background:'#FCF6E8'}:{})}}>
                 <div style={{flex:1}}>
                   <div style={{fontSize:13,fontWeight:500}}>
                     {p.name}
@@ -106,33 +107,33 @@ export default function SettingsPage() {
                 </div>
                 <select
                   style={{...s.input,maxWidth:150,flex:'none',padding:'5px 8px'}}
-                  value={producerEdits[p.name] ?? (p.producer || '')}
-                  onChange={e=>setProducerEdits({...producerEdits,[p.name]:e.target.value})}
+                  value={producerEdits[pk] ?? (p.producer || '')}
+                  onChange={e=>setProducerEdits({...producerEdits,[pk]:e.target.value})}
                 >
                   <option value="">生産者なし</option>
                   {(data.producers||[]).filter((x:any)=>(x.role||'生産者')==='生産者').map((x:any)=><option key={x.id} value={x.name}>{x.name}</option>)}
                 </select>
                 <input
                   style={{...s.input,maxWidth:80,flex:'none',padding:'5px 8px'}} list="unit-list"
-                  value={unitEdits[p.name] ?? (p.unit || '')}
-                  onChange={e=>setUnitEdits({...unitEdits,[p.name]:e.target.value})}
+                  value={unitEdits[pk] ?? (p.unit || '')}
+                  onChange={e=>setUnitEdits({...unitEdits,[pk]:e.target.value})}
                   placeholder="単位"
                 />
                 <input
                   style={{...s.input,maxWidth:96,flex:'none',padding:'5px 8px'}} type="number" min="0"
-                  value={priceEdits[p.name] ?? String(p.unitPrice ?? 0)}
-                  onChange={e=>setPriceEdits({...priceEdits,[p.name]:e.target.value})}
+                  value={priceEdits[pk] ?? String(p.unitPrice ?? 0)}
+                  onChange={e=>setPriceEdits({...priceEdits,[pk]:e.target.value})}
                 />
                 <span style={{fontSize:11,color:'var(--muted)'}}>円</span>
                 {pending ? (
                   <>
-                    <button style={{...s.btn,padding:'5px 10px',fontSize:11}} onClick={async()=>{await api('approve_product',{name:p.name,unitPrice:Number(priceEdits[p.name] ?? p.unitPrice ?? 0)||0,producer:producerEdits[p.name] ?? (p.producer||''),unit:unitEdits[p.name] ?? (p.unit||'')});showToast('✅ 承認しました')}}>承認</button>
-                    <button style={s.delBtn} onClick={()=>{if(confirm('この申請を却下（削除）しますか？'))api('reject_product',{name:p.name})}}>却下</button>
+                    <button style={{...s.btn,padding:'5px 10px',fontSize:11}} onClick={async()=>{await api('approve_product',{id:p.id,name:p.name,unitPrice:Number(priceEdits[pk] ?? p.unitPrice ?? 0)||0,producer:producerEdits[pk] ?? (p.producer||''),unit:unitEdits[pk] ?? (p.unit||'')});showToast('✅ 承認しました')}}>承認</button>
+                    <button style={s.delBtn} onClick={()=>{if(confirm('この申請を却下（削除）しますか？'))api('reject_product',{id:p.id,name:p.name})}}>却下</button>
                   </>
                 ) : (
                   <>
-                    <button style={{...s.btn,padding:'5px 10px',fontSize:11}} onClick={async()=>{await api('add_product',{name:p.name,unitPrice:Number(priceEdits[p.name] ?? p.unitPrice ?? 0)||0,producer:producerEdits[p.name] ?? (p.producer||''),unit:unitEdits[p.name] ?? (p.unit||'')});showToast('💾 保存しました')}}>保存</button>
-                    <button style={s.delBtn} onClick={()=>api('remove_product',{name:p.name})}>削除</button>
+                    <button style={{...s.btn,padding:'5px 10px',fontSize:11}} onClick={async()=>{await api('update_product',{id:p.id,name:p.name,unitPrice:Number(priceEdits[pk] ?? p.unitPrice ?? 0)||0,producer:producerEdits[pk] ?? (p.producer||''),unit:unitEdits[pk] ?? (p.unit||'')});showToast('💾 保存しました')}}>保存</button>
+                    <button style={s.delBtn} onClick={()=>api('remove_product',{id:p.id,name:p.name})}>削除</button>
                   </>
                 )}
               </div>

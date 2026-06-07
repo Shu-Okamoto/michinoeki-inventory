@@ -18,9 +18,12 @@ async function productPriceMap(): Promise<Record<string, number>> {
   for (const p of products) map[p.name] = Number(p.unitPrice) || 0
   return map
 }
-async function productPrice(name: string): Promise<number> {
-  const map = await productPriceMap()
-  return map[name] || 0
+async function productPrice(name: string, producer?: string): Promise<number> {
+  const products: any[] = await kvGet(ORG, 'products') || []
+  // 生産者＋商品名で優先解決。なければ商品名一致。
+  const hit = (producer && products.find((p: any) => p.name === name && (p.producer || '') === producer))
+    || products.find((p: any) => p.name === name)
+  return Number(hit?.unitPrice) || 0
 }
 
 const KEYS = ['locations', 'products', 'shipments', 'sales', 'gmail_settings', 'producers', 'announcements', 'settings']
@@ -77,7 +80,7 @@ export async function GET(req: NextRequest) {
 
 // 管理者のみ許可されるアクション
 const ADMIN_ACTIONS = new Set([
-  'add_location', 'remove_location', 'add_product', 'remove_product',
+  'add_location', 'remove_location', 'add_product', 'remove_product', 'update_product',
   'approve_product', 'reject_product',
   'add_producer', 'update_producer', 'remove_producer',
   'add_announcement', 'remove_announcement',
@@ -170,18 +173,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
     case 'add_product': {
-      // 組合管理者が直接登録（承認済みとして追加）
+      // 組合管理者が新規登録（承認済み）。同名でも生産者が違えば別商品として登録可。
       const list: any[] = await kvGet(ORG, 'products') || []
-      const existing = list.find((p: any) => p.name === payload.name)
       const unitPrice = Number(payload.unitPrice) || 0
-      if (existing) {
-        // 既存商品は単位・単価・生産者を更新（単価編集を兼ねる）
-        if (payload.unit !== undefined) existing.unit = payload.unit || ''
-        if (payload.unitPrice !== undefined) existing.unitPrice = unitPrice
-        if (payload.producer !== undefined) existing.producer = payload.producer || ''
-        existing.status = 'approved'
+      const dup = list.find((p: any) => p.name === payload.name && (p.producer || '') === (payload.producer || ''))
+      if (dup) {
+        // 同一生産者・同名は更新（単価・単位）
+        if (payload.unit !== undefined) dup.unit = payload.unit || ''
+        dup.unitPrice = unitPrice
+        dup.status = 'approved'
       } else {
-        list.push({ name: payload.name, producer: payload.producer || '', unit: payload.unit || '', unitPrice, status: 'approved' })
+        list.push({ id: uid(), name: payload.name, producer: payload.producer || '', unit: payload.unit || '', unitPrice, status: 'approved' })
+      }
+      await kvSet(ORG, 'products', list)
+      return NextResponse.json({ ok: true })
+    }
+    case 'update_product': {
+      // 既存商品の編集（idで特定。旧データはnameで特定）
+      const list: any[] = await kvGet(ORG, 'products') || []
+      const p = list.find((x: any) => payload.id ? x.id === payload.id : x.name === payload.name)
+      if (p) {
+        if (!p.id) p.id = uid()
+        if (payload.name !== undefined) p.name = payload.name
+        if (payload.producer !== undefined) p.producer = payload.producer || ''
+        if (payload.unit !== undefined) p.unit = payload.unit || ''
+        if (payload.unitPrice !== undefined) p.unitPrice = Number(payload.unitPrice) || 0
       }
       await kvSet(ORG, 'products', list)
       return NextResponse.json({ ok: true })
@@ -191,13 +207,15 @@ export async function POST(req: NextRequest) {
       if (role !== '生産者' && role !== '組合管理者') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
       if (!payload.name) return NextResponse.json({ error: '商品名が必要です' }, { status: 400 })
       const list: any[] = await kvGet(ORG, 'products') || []
-      if (list.find((p: any) => p.name === payload.name)) {
-        return NextResponse.json({ error: '同名の商品が既にあります' }, { status: 400 })
-      }
-      const status = role === '組合管理者' ? 'approved' : 'pending'
       // 生産者の申請は自分を生産者に。組合は指定可。
       const producer = role === '生産者' ? (session.user?.name || '') : (payload.producer || '')
+      // 同名でも生産者が違えばOK。同一生産者・同名のみ拒否。
+      if (list.find((p: any) => p.name === payload.name && (p.producer || '') === producer)) {
+        return NextResponse.json({ error: 'この生産者の同名商品が既にあります' }, { status: 400 })
+      }
+      const status = role === '組合管理者' ? 'approved' : 'pending'
       list.push({
+        id: uid(),
         name: payload.name,
         producer,
         unit: payload.unit || '',
@@ -210,9 +228,10 @@ export async function POST(req: NextRequest) {
     }
     case 'approve_product': {
       const list: any[] = await kvGet(ORG, 'products') || []
-      const p = list.find((x: any) => x.name === payload.name)
+      const p = list.find((x: any) => payload.id ? x.id === payload.id : x.name === payload.name)
       if (p) {
         p.status = 'approved'
+        if (!p.id) p.id = uid()
         if (payload.unitPrice !== undefined) p.unitPrice = Number(payload.unitPrice) || 0
         if (payload.unit !== undefined) p.unit = payload.unit || ''
         if (payload.producer !== undefined) p.producer = payload.producer || ''
@@ -223,18 +242,21 @@ export async function POST(req: NextRequest) {
     case 'reject_product': {
       // 承認待ちの申請を却下（削除）
       const list: any[] = await kvGet(ORG, 'products') || []
-      await kvSet(ORG, 'products', list.filter((p: any) => !(p.name === payload.name && (p.status || 'approved') === 'pending')))
+      await kvSet(ORG, 'products', list.filter((p: any) => {
+        const hit = payload.id ? p.id === payload.id : p.name === payload.name
+        return !(hit && (p.status || 'approved') === 'pending')
+      }))
       return NextResponse.json({ ok: true })
     }
     case 'remove_product': {
       const list: any[] = await kvGet(ORG, 'products') || []
-      await kvSet(ORG, 'products', list.filter((p: any) => p.name !== payload.name))
+      await kvSet(ORG, 'products', list.filter((p: any) => payload.id ? p.id !== payload.id : p.name !== payload.name))
       return NextResponse.json({ ok: true })
     }
     case 'add_shipment': {
       // 納品＝生産者または管理者
       if (role === '販売者') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
-      const unitPrice = payload.unitPrice !== undefined ? Number(payload.unitPrice) || 0 : await productPrice(payload.product)
+      const unitPrice = payload.unitPrice !== undefined ? Number(payload.unitPrice) || 0 : await productPrice(payload.product, payload.producer)
       await addShipment(ORG, { id: uid(), date: payload.date, location: payload.location, producer: payload.producer || '', product: payload.product, qty: Number(payload.qty) || 0, unitPrice })
       return NextResponse.json({ ok: true })
     }

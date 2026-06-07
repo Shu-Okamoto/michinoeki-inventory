@@ -35,10 +35,12 @@ function redactByRole(t: any, role: string) {
   return c
 }
 
-async function defaults(product: string) {
+async function defaults(product: string, producer?: string) {
   const products: any[] = await kvGet(ORG, 'products') || []
   const settings: any = await kvGet(ORG, 'settings') || {}
-  const p = products.find((x: any) => x.name === product)
+  // 生産者＋商品名で優先解決（同名商品が複数生産者にある場合に対応）。なければ商品名一致。
+  const p = (producer && products.find((x: any) => x.name === product && (x.producer || '') === producer))
+    || products.find((x: any) => x.name === product)
   const unitPrice = Number(p?.unitPrice) || 0
   const unit = p?.unit || ''
   const commissionRate = settings.commissionRate != null ? Number(settings.commissionRate) : 8
@@ -82,11 +84,12 @@ export async function POST(req: NextRequest) {
     case 'create': {
       // 出荷登録（生産者または組合）
       if (role !== '生産者' && role !== ADMIN) return deny()
-      const d = await defaults(payload.product)
+      const producerName = payload.producer || (role === '生産者' ? (session.user?.name || '') : '')
+      const d = await defaults(payload.product, producerName)
       const id = await createTransaction(ORG, {
         type: payload.type || '産直',
         date: payload.date || new Date().toISOString().slice(0, 10),
-        producer: payload.producer || (role === '生産者' ? (session.user?.name || '') : ''),
+        producer: producerName,
         seller: payload.seller || '',
         location: payload.location || '',
         product: payload.product,
