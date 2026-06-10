@@ -124,6 +124,7 @@ export async function POST(req: NextRequest) {
         bQty: Number(payload.bQty) || 0, bPrice: Number(payload.bPrice) || 0,
         discardQty: Number(payload.discardQty) || 0,
         commissionRate: payload.commissionRate != null ? Number(payload.commissionRate) : undefined,
+        complete: !!payload.complete,
       })
       return NextResponse.json({ ok: true })
     }

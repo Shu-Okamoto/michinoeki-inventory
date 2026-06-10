@@ -331,14 +331,14 @@ export default function DealsPage() {
                       <div><label style={s.miniLabel}>B単価(円)</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'bPrice', t.gradeBPrice || 0)} onChange={e => setDraft(t.id, 'bPrice', e.target.value)} /></div>
                       <div><label style={s.miniLabel}>廃棄数</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'discardQty', t.discardQty || 0)} onChange={e => setDraft(t.id, 'discardQty', e.target.value)} /></div>
                       <div><label style={s.miniLabel}>手数料率(%)</label><input style={s.miniInput} type="number" step="0.1" value={dv(t, 'commissionRate', t.commissionRate)} onChange={e => setDraft(t.id, 'commissionRate', e.target.value)} /></div>
-                      <button style={s.btn2} onClick={() => action('grade', { id: t.id, aQty: Number(dv(t, 'aQty', t.gradeAQty || (t.deliveryQty || t.shipQty))), aPrice: Number(dv(t, 'aPrice', t.gradeAPrice || t.unitPrice)), bQty: Number(dv(t, 'bQty', t.gradeBQty || 0)), bPrice: Number(dv(t, 'bPrice', t.gradeBPrice || 0)), discardQty: Number(dv(t, 'discardQty', t.discardQty || 0)), commissionRate: Number(dv(t, 'commissionRate', t.commissionRate)) }, '✅ 検品を保存しました')}>検品を保存</button>
-                      {t.status === 'confirmed' && <button style={s.btn} onClick={() => action('complete', { id: t.id }, '✅ 検品完了（精算待ちへ）')}>検品完了</button>}
+                      <button style={s.btn2} onClick={() => action('grade', { id: t.id, aQty: Number(dv(t, 'aQty', t.gradeAQty || (t.deliveryQty || t.shipQty))), aPrice: Number(dv(t, 'aPrice', t.gradeAPrice || t.unitPrice)), bQty: Number(dv(t, 'bQty', t.gradeBQty || 0)), bPrice: Number(dv(t, 'bPrice', t.gradeBPrice || 0)), discardQty: Number(dv(t, 'discardQty', t.discardQty || 0)), commissionRate: Number(dv(t, 'commissionRate', t.commissionRate)) }, '✅ 検品を途中保存しました')}>途中保存</button>
+                      <button style={s.btn} onClick={() => action('grade', { id: t.id, complete: true, aQty: Number(dv(t, 'aQty', t.gradeAQty || (t.deliveryQty || t.shipQty))), aPrice: Number(dv(t, 'aPrice', t.gradeAPrice || t.unitPrice)), bQty: Number(dv(t, 'bQty', t.gradeBQty || 0)), bPrice: Number(dv(t, 'bPrice', t.gradeBPrice || 0)), discardQty: Number(dv(t, 'discardQty', t.discardQty || 0)), commissionRate: Number(dv(t, 'commissionRate', t.commissionRate)) }, '🎉 検品確定（成立・精算待ちへ）')}>検品確定（成立）</button>
                     </div>
                   </div>
                 )}
 
-                {/* 販売者: 当日の売上登録（その日の販売数を加算。残数があれば翌日も販売中で繰越） */}
-                {(isSeller || isAdmin) && (t.status === 'confirmed' || t.status === 'sales_entered') && (
+                {/* 販売者: 当日の売上登録（産直委託のみ。買取は検品で成立し売上登録なし） */}
+                {(isSeller || isAdmin) && t.type !== '卸売' && (t.status === 'confirmed' || t.status === 'sales_entered') && (
                   <div style={{ width: '100%', background: '#EFF7EA', border: '1px solid var(--accent)', borderRadius: 10, padding: 12 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 12, fontWeight: 700 }}>📒 本日の売上登録</span>
@@ -350,11 +350,6 @@ export default function DealsPage() {
                       <span style={{ fontSize: 10, color: 'var(--muted)' }}>日報システム等からのAPI連携でも自動登録できます</span>
                     </div>
                   </div>
-                )}
-
-                {/* 買取(卸売): 販売者が受領確認 → 販売完了 */}
-                {(isSeller || isAdmin) && t.type === '卸売' && t.status === 'sales_entered' && (
-                  <button style={s.btn} onClick={() => action('complete', { id: t.id }, '🎉 取引が成立しました')}>受領確認（完了）</button>
                 )}
 
                 {/* 棚残の処理（産直のみ・販売中） */}
