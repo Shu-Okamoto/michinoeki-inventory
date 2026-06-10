@@ -14,7 +14,7 @@ export default function Home() {
   const [showGoogle, setShowGoogle] = useState(false)
 
   useEffect(() => {
-    if (status === 'authenticated') router.push('/dashboard')
+    if (status === 'authenticated') router.push('/news')
   }, [status, router])
 
   async function loginWithId(e: React.FormEvent) {
@@ -24,7 +24,7 @@ export default function Home() {
     const res = await signIn('credentials', { loginId, password, redirect: false })
     setBusy(false)
     if (res?.error) setErr('ログインIDまたはパスワードが正しくありません')
-    else router.push('/dashboard')
+    else router.push('/news')
   }
 
   // 認証済みならダッシュボードへ遷移するまでスピナー表示。
