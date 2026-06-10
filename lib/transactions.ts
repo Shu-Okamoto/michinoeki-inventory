@@ -28,6 +28,10 @@ export interface Transaction {
   souzaiQty: number          // 惣菜利用（販売者が3割価格で買取）した数
   discountQty: number        // 割引販売した数（産直）
   discardQty: number         // 廃棄した数（無償・棚残から減算）
+  gradeAQty: number          // 買取: A品数
+  gradeAPrice: number        // 買取: A品単価
+  gradeBQty: number          // 買取: B品数
+  gradeBPrice: number        // 買取: B品単価
   discountUnitPrice: number  // 割引販売の単価（円・半額〜定価の範囲）
   unit: string               // 単位（袋/本/KG など・商品マスタからスナップショット）
   lastSalesDate?: string     // 直近に売上登録した日（YYYY-MM-DD）
@@ -67,13 +71,21 @@ export const DISCOUNT_FLOOR = 0.5 // 割引販売の下限（半額まで）
 // 請求基準数量・金額の算出（お金のルールの単一の真実）
 //  産直: 実売(定価) ＋ 割引販売 ＋ 惣菜利用(3割) の合算で請求。引取は無償（請求対象外）。
 //  卸売: 納品数 × 単価。
-export function calcMoney(t: Pick<Transaction, 'type' | 'deliveryQty' | 'salesQty' | 'souzaiQty' | 'discountQty' | 'discountUnitPrice' | 'unitPrice' | 'commissionRate'>) {
+export function calcMoney(t: Pick<Transaction, 'type' | 'deliveryQty' | 'salesQty' | 'souzaiQty' | 'discountQty' | 'discountUnitPrice' | 'gradeAQty' | 'gradeAPrice' | 'gradeBQty' | 'gradeBPrice' | 'unitPrice' | 'commissionRate'>) {
   const up = Number(t.unitPrice) || 0
   const rate = Number(t.commissionRate) || 0
   let billingQty: number, retailAmount: number, discountAmount: number, souzaiAmount: number
   if (t.type === '卸売') {
-    billingQty = Number(t.deliveryQty) || 0
-    retailAmount = billingQty * up
+    // 買取: A品・B品を等級別単価で計算。等級未入力（旧データ）は納品数×単価にフォールバック。
+    const aq = Number(t.gradeAQty) || 0, ap = Number(t.gradeAPrice) || 0
+    const bq = Number(t.gradeBQty) || 0, bp = Number(t.gradeBPrice) || 0
+    if (aq + bq > 0) {
+      billingQty = aq + bq
+      retailAmount = aq * ap + bq * bp
+    } else {
+      billingQty = Number(t.deliveryQty) || 0
+      retailAmount = billingQty * up
+    }
     discountAmount = 0
     souzaiAmount = 0
   } else {
@@ -135,6 +147,10 @@ function initTxTables(): Promise<void> {
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discount_qty INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discount_unit_price INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discard_qty INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS grade_a_qty INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS grade_a_price INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS grade_b_qty INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS grade_b_price INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS unit TEXT;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS last_sales_date TEXT;
         CREATE TABLE IF NOT EXISTS iwkagri_invoices (
@@ -175,6 +191,10 @@ function rowToTx(r: any): Transaction {
     souzaiQty: Number(r.souzai_qty) || 0,
     discountQty: Number(r.discount_qty) || 0,
     discardQty: Number(r.discard_qty) || 0,
+    gradeAQty: Number(r.grade_a_qty) || 0,
+    gradeAPrice: Number(r.grade_a_price) || 0,
+    gradeBQty: Number(r.grade_b_qty) || 0,
+    gradeBPrice: Number(r.grade_b_price) || 0,
     discountUnitPrice: Number(r.discount_unit_price) || 0,
     unit: r.unit || '',
     lastSalesDate: r.last_sales_date || undefined,
@@ -242,6 +262,23 @@ export async function addSales(org: string, id: string, addQty: number, date?: s
       SET sales_qty = ${newSales}, last_sales_date = ${date || new Date().toISOString().slice(0, 10)},
           status = ${soldOut ? 'completed' : 'sales_entered'}, updated_at = NOW()
       WHERE org = ${org} AND id = ${id} AND status IN ('confirmed','sales_entered')
+    `
+  })
+}
+
+// 買取(卸売): 組合の検品。A品/B品(等級別単価)・廃棄数を入力して検品中(confirmed)へ。
+export async function gradeTransaction(org: string, id: string, f: { aQty: number; aPrice: number; bQty: number; bPrice: number; discardQty?: number; commissionRate?: number }): Promise<void> {
+  await initTxTables()
+  await withRetry(async () => {
+    const sql = getSql()
+    await sql`
+      UPDATE iwkagri_transactions SET
+        grade_a_qty = ${Number(f.aQty) || 0}, grade_a_price = ${Number(f.aPrice) || 0},
+        grade_b_qty = ${Number(f.bQty) || 0}, grade_b_price = ${Number(f.bPrice) || 0},
+        discard_qty = ${Number(f.discardQty) || 0},
+        commission_rate = COALESCE(${f.commissionRate ?? null}, commission_rate),
+        status = 'confirmed', updated_at = NOW()
+      WHERE org = ${org} AND id = ${id} AND type = '卸売' AND status IN ('shipped','confirmed')
     `
   })
 }
@@ -502,8 +539,9 @@ export async function generateInvoices(org: string, period: string): Promise<{ p
 
     for (const t of txs) {
       const isWholesale = t.type === '卸売'
-      // 請求数量：卸売=納品 / 産直=実売＋割引＋惣菜（引取は無償・対象外）
-      const billQty = isWholesale ? (t.deliveryQty || 0) : ((t.salesQty || 0) + (t.discountQty || 0) + (t.souzaiQty || 0))
+      // 請求数量：買取=A品＋B品(無ければ納品) / 産直=実売＋割引＋惣菜（引取・廃棄は無償・対象外）
+      const buyoutQty = ((t.gradeAQty || 0) + (t.gradeBQty || 0)) || (t.deliveryQty || 0)
+      const billQty = isWholesale ? buyoutQty : ((t.salesQty || 0) + (t.discountQty || 0) + (t.souzaiQty || 0))
       // 取引を精算済に（請求数量をスナップショット）
       await sql`UPDATE iwkagri_transactions
         SET status = 'settled', settled_qty = ${billQty}, invoice_id = ${period}, updated_at = NOW()
@@ -525,7 +563,7 @@ export async function generateInvoices(org: string, period: string): Promise<{ p
 
     // 請求数量が0のもの（その期間に1個も請求対象がなかった産直）は請求書に計上しない
     const billable = billed.filter(t => (t.type === '卸売'
-      ? (t.deliveryQty || 0)
+      ? (((t.gradeAQty || 0) + (t.gradeBQty || 0)) || (t.deliveryQty || 0))
       : ((t.salesQty || 0) + (t.discountQty || 0) + (t.souzaiQty || 0))) > 0)
 
     const byProducer = new Map<string, Transaction[]>()

@@ -15,6 +15,19 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string }> 
   canceled:      { label: '取消', color: '#B23B37', bg: '#FBE0DE' },
 }
 const typeLabel = (t: string) => t === '卸売' ? '買取（卸売）' : '産直委託'
+// 種別でステータス表記を出し分け
+function statusLabel(t: any): string {
+  const buyout = t.type === '卸売'
+  switch (t.status) {
+    case 'shipped': return buyout ? '納品登録済（検品待ち）' : '出荷済（出荷確認・検品待ち）'
+    case 'confirmed': return buyout ? '検品中' : '販売中'
+    case 'sales_entered': return '販売中'
+    case 'completed': return buyout ? '検品完了（精算待ち）' : '販売完了（組合確認待ち）'
+    case 'settled': return '精算済'
+    case 'canceled': return '取消'
+    default: return t.status
+  }
+}
 
 const ACTIVE = ['shipped', 'confirmed', 'sales_entered']
 
@@ -105,7 +118,7 @@ export default function DealsPage() {
       {/* 出荷登録 */}
       {canCreate && (
         <div style={s.box}>
-          <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>🆕 出荷を登録（取引の起点）</h2>
+          <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>{type === '卸売' ? '🆕 納品を登録（買取・組合）' : '🆕 出荷を登録（産直委託の起点）'}</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 12, marginBottom: 14 }}>
             <div>
               <label style={s.label}>取引種別</label>
@@ -150,7 +163,7 @@ export default function DealsPage() {
               </select>
             </div>
             <div>
-              <label style={s.label}>出荷数</label>
+              <label style={s.label}>{type === '卸売' ? '納品数' : '出荷数'}</label>
               <input style={s.input} type="number" min="1" value={qty} onChange={e => setQty(e.target.value)} placeholder="20" />
             </div>
             <div>
@@ -158,7 +171,7 @@ export default function DealsPage() {
               <input style={s.input} type="date" value={date} onChange={e => setDate(e.target.value)} />
             </div>
           </div>
-          <button style={s.btn} onClick={createTx}>📦 出荷を登録する</button>
+          <button style={s.btn} onClick={createTx}>{type === '卸売' ? '📥 納品を登録する' : '📦 出荷を登録する'}</button>
           <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>単価は商品マスタ、手数料率は設定の既定値が自動適用されます（組合が確認時に調整可能）。</p>
         </div>
       )}
@@ -188,8 +201,9 @@ export default function DealsPage() {
         )}
         {filtered.map(t => {
           const meta = STATUS_META[t.status] || STATUS_META.shipped
-          const basisQty = t.type === '卸売' ? t.deliveryQty : (t.billingQty ?? t.salesQty)
+          const basisQty = t.billingQty ?? (t.type === '卸売' ? t.deliveryQty : t.salesQty)
           const hasBreakdown = t.type !== '卸売' && ((t.discountQty || 0) > 0 || (t.souzaiQty || 0) > 0)
+          const gradeBreak = t.type === '卸売' && ((t.gradeAQty || 0) + (t.gradeBQty || 0)) > 0
           const u = t.unit || ''
           const shelf = Math.max(0, (t.deliveryQty || 0) - (t.salesQty || 0) - (t.retrievedQty || 0) - (t.souzaiQty || 0) - (t.discountQty || 0) - (t.discardQty || 0))
           return (
@@ -197,7 +211,7 @@ export default function DealsPage() {
               {/* ヘッダー */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: t.type === '卸売' ? '#E7DCF4' : '#DCEFD2', color: t.type === '卸売' ? '#5B3B86' : '#2E6B17' }}>{typeLabel(t.type)}</span>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: meta.bg, color: meta.color }}>{meta.label}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: meta.bg, color: meta.color }}>{statusLabel(t)}</span>
                 <span style={{ fontFamily: 'Space Mono,monospace', fontSize: 11, color: 'var(--muted)' }}>{t.date}</span>
                 <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 700 }}>{t.product}</span>
               </div>
@@ -211,6 +225,14 @@ export default function DealsPage() {
 
               {/* 数量の流れ */}
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12, fontFamily: 'Space Mono,monospace', fontSize: 13 }}>
+                {t.type === '卸売' ? (<>
+                  <span style={{ color: 'var(--muted)', fontSize: 11 }}>納品</span><b>{t.deliveryQty || t.shipQty}{u}</b>
+                  <span style={{ color: 'var(--muted)' }}>→</span>
+                  <span style={{ color: 'var(--muted)', fontSize: 11 }}>A品</span><b>{t.gradeAQty || 0}{u}</b>
+                  <span style={{ color: 'var(--muted)' }}>/</span>
+                  <span style={{ color: 'var(--muted)', fontSize: 11 }}>B品</span><b>{t.gradeBQty || 0}{u}</b>
+                  {(t.discardQty || 0) > 0 && (<><span style={{ color: 'var(--muted)' }}>/</span><span style={{ color: 'var(--muted)', fontSize: 11 }}>廃棄</span><b>{t.discardQty}{u}</b></>)}
+                </>) : (<>
                 <span style={{ color: 'var(--muted)', fontSize: 11 }}>出荷</span><b>{t.shipQty}{u}</b>
                 <span style={{ color: 'var(--muted)' }}>→</span>
                 <span style={{ color: 'var(--muted)', fontSize: 11 }}>納品</span><b>{t.deliveryQty}{u}</b>
@@ -226,26 +248,29 @@ export default function DealsPage() {
                 {t.lastSalesDate && (t.status === 'confirmed' || t.status === 'sales_entered') && (
                   <span style={{ fontSize: 10, color: 'var(--muted)' }}>（最終売上 {t.lastSalesDate}）</span>
                 )}
+                </>)}
               </div>
 
               {/* 金額（ロール別に表示を統制） */}
               <div style={{ background: 'var(--surface2)', borderRadius: 8, padding: '10px 14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: '6px 18px', fontSize: 12, marginBottom: 12 }}>
                 <span>単価: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.unitPrice)}</b></span>
-                <span>請求数量({t.type === '卸売' ? '納品' : '実売＋割引＋惣菜'}): <b style={{ fontFamily: 'Space Mono,monospace' }}>{basisQty}</b></span>
+                <span>請求数量({t.type === '卸売' ? 'A品＋B品' : '実売＋割引＋惣菜'}): <b style={{ fontFamily: 'Space Mono,monospace' }}>{basisQty}</b></span>
 
                 {/* 組合管理者: すべて */}
                 {isAdmin && <>
-                  <span>販売金額: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.amount)}</b></span>
+                  <span>{t.type === '卸売' ? '買取金額' : '販売金額'}: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.amount)}</b></span>
                   <span>手数料({t.commissionRate}%): <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.commission)}</b></span>
                   <span style={{ color: 'var(--accent)' }}>生産者請求: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.producerAmount)}</b></span>
                   <span style={{ color: 'var(--accent2)' }}>販売者請求: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.sellerAmount)}</b></span>
                   {hasBreakdown && <span style={{ gridColumn: '1/-1', color: 'var(--muted)', fontSize: 11 }}>内訳　実売 {yen(t.retailAmount)} ／ 割引 {yen(t.discountAmount)} ／ 惣菜 {yen(t.souzaiAmount)}</span>}
+                  {gradeBreak && <span style={{ gridColumn: '1/-1', color: 'var(--muted)', fontSize: 11 }}>内訳　A品 {t.gradeAQty}{u}×{yen(t.gradeAPrice)} ／ B品 {t.gradeBQty}{u}×{yen(t.gradeBPrice)}</span>}
                 </>}
 
                 {/* 生産者: 自分の受取額（満額）のみ。手数料・販売者請求は非表示 */}
                 {isProducer && <>
                   <span style={{ color: 'var(--accent)' }}>受取額: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(t.producerAmount)}</b></span>
                   {hasBreakdown && <span style={{ gridColumn: '1/-1', color: 'var(--muted)', fontSize: 11 }}>内訳　実売 {yen(t.retailAmount)} ／ 割引 {yen(t.discountAmount)} ／ 惣菜 {yen(t.souzaiAmount)}</span>}
+                  {gradeBreak && <span style={{ gridColumn: '1/-1', color: 'var(--muted)', fontSize: 11 }}>内訳　A品 {t.gradeAQty}{u}×{yen(t.gradeAPrice)} ／ B品 {t.gradeBQty}{u}×{yen(t.gradeBPrice)}</span>}
                 </>}
 
                 {/* 販売者: 自分の請求（支払）額のみ。生産者請求・手数料は非表示 */}
@@ -295,16 +320,21 @@ export default function DealsPage() {
                   </div>
                 )}
 
-                {/* 買取(卸売): 組合が納品数・単価・手数料を確定 */}
+                {/* 買取(卸売): 組合の検品（A品・B品 等級別単価・廃棄） */}
                 {isAdmin && t.type === '卸売' && (t.status === 'shipped' || t.status === 'confirmed') && (
-                  <>
-                    <div><label style={s.miniLabel}>納品数</label><input style={s.miniInput} type="number" value={dv(t, 'deliveryQty', t.deliveryQty || t.shipQty)} onChange={e => setDraft(t.id, 'deliveryQty', e.target.value)} /></div>
-                    <div><label style={s.miniLabel}>単価(円)</label><input style={s.miniInput} type="number" value={dv(t, 'unitPrice', t.unitPrice)} onChange={e => setDraft(t.id, 'unitPrice', e.target.value)} /></div>
-                    <div><label style={s.miniLabel}>手数料率(%)</label><input style={s.miniInput} type="number" step="0.1" value={dv(t, 'commissionRate', t.commissionRate)} onChange={e => setDraft(t.id, 'commissionRate', e.target.value)} /></div>
-                    <button style={s.btn} onClick={() => action('confirm', { id: t.id, deliveryQty: Number(dv(t, 'deliveryQty', t.deliveryQty || t.shipQty)), unitPrice: Number(dv(t, 'unitPrice', t.unitPrice)), commissionRate: Number(dv(t, 'commissionRate', t.commissionRate)) }, '✅ 納品数を確定しました')}>
-                      {t.status === 'confirmed' ? '再確定' : '納品数を確定'}
-                    </button>
-                  </>
+                  <div style={{ width: '100%', border: '1px dashed var(--accent2)', borderRadius: 10, padding: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>🔍 検品（納品数 {t.deliveryQty || t.shipQty}{u}）</div>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                      <div><label style={s.miniLabel}>A品数</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'aQty', t.gradeAQty || (t.deliveryQty || t.shipQty))} onChange={e => setDraft(t.id, 'aQty', e.target.value)} /></div>
+                      <div><label style={s.miniLabel}>A単価(円)</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'aPrice', t.gradeAPrice || t.unitPrice)} onChange={e => setDraft(t.id, 'aPrice', e.target.value)} /></div>
+                      <div><label style={s.miniLabel}>B品数</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'bQty', t.gradeBQty || 0)} onChange={e => setDraft(t.id, 'bQty', e.target.value)} /></div>
+                      <div><label style={s.miniLabel}>B単価(円)</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'bPrice', t.gradeBPrice || 0)} onChange={e => setDraft(t.id, 'bPrice', e.target.value)} /></div>
+                      <div><label style={s.miniLabel}>廃棄数</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'discardQty', t.discardQty || 0)} onChange={e => setDraft(t.id, 'discardQty', e.target.value)} /></div>
+                      <div><label style={s.miniLabel}>手数料率(%)</label><input style={s.miniInput} type="number" step="0.1" value={dv(t, 'commissionRate', t.commissionRate)} onChange={e => setDraft(t.id, 'commissionRate', e.target.value)} /></div>
+                      <button style={s.btn2} onClick={() => action('grade', { id: t.id, aQty: Number(dv(t, 'aQty', t.gradeAQty || (t.deliveryQty || t.shipQty))), aPrice: Number(dv(t, 'aPrice', t.gradeAPrice || t.unitPrice)), bQty: Number(dv(t, 'bQty', t.gradeBQty || 0)), bPrice: Number(dv(t, 'bPrice', t.gradeBPrice || 0)), discardQty: Number(dv(t, 'discardQty', t.discardQty || 0)), commissionRate: Number(dv(t, 'commissionRate', t.commissionRate)) }, '✅ 検品を保存しました')}>検品を保存</button>
+                      {t.status === 'confirmed' && <button style={s.btn} onClick={() => action('complete', { id: t.id }, '✅ 検品完了（精算待ちへ）')}>検品完了</button>}
+                    </div>
+                  </div>
                 )}
 
                 {/* 販売者: 当日の売上登録（その日の販売数を加算。残数があれば翌日も販売中で繰越） */}

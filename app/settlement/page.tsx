@@ -100,7 +100,7 @@ export default function SettlementPage() {
     const sell = groupBy(base, 'seller')
     const esc = (s: any) => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' } as any)[c])
     const rowsOf = (g: Grp, kind: 'producer' | 'seller') => g.tx.map(t => {
-      const bq = t.type === '卸売' ? t.deliveryQty : ((t.salesQty || 0) + (t.discountQty || 0) + (t.souzaiQty || 0))
+      const bq = t.type === '卸売' ? (((t.gradeAQty || 0) + (t.gradeBQty || 0)) || t.deliveryQty) : ((t.salesQty || 0) + (t.discountQty || 0) + (t.souzaiQty || 0))
       const u = esc(t.unit || '')
       const tl = t.type === '卸売' ? '買取' : '産直委託'
       return `<tr><td>${esc(t.date)}</td><td>${esc(t.product)}</td><td>${esc(tl)}</td><td class="r">${bq}${u}</td><td class="r">${yen(t.unitPrice)}</td><td class="r">${yen(t.amount)}</td>${kind === 'seller' ? `<td class="r">${yen(t.commission)}</td>` : ''}</tr>`

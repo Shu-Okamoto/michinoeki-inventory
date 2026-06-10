@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { kvGet } from '@/lib/db'
 import { ORG } from '@/lib/users'
 import {
-  createTransaction, confirmTransaction, enterSales, addSales, completeTransaction,
+  createTransaction, confirmTransaction, gradeTransaction, enterSales, addSales, completeTransaction,
   retrieveTransaction, souzaiTransaction, discountSaleTransaction, discardTransaction,
   distributeTransaction,
   cancelTransaction, patchTransaction, deleteTransaction,
@@ -28,10 +28,12 @@ function redactByRole(t: any, role: string) {
   } else if (role === '販売者') {
     delete c.commission; delete c.commissionRate; delete c.producerAmount
     delete c.amount; delete c.retailAmount; delete c.discountAmount; delete c.souzaiAmount
+    delete c.gradeAPrice; delete c.gradeBPrice
   } else {
     // guest 等：金額情報はすべて除去
     delete c.commission; delete c.commissionRate; delete c.producerAmount; delete c.sellerAmount
     delete c.amount; delete c.retailAmount; delete c.discountAmount; delete c.souzaiAmount
+    delete c.gradeAPrice; delete c.gradeBPrice
   }
   return c
 }
@@ -83,8 +85,9 @@ export async function POST(req: NextRequest) {
 
   switch (action) {
     case 'create': {
-      // 出荷登録（生産者または組合）
+      // 出荷登録(産直委託・生産者/組合) / 納品登録(買取・組合のみ)
       if (role !== '生産者' && role !== ADMIN) return deny()
+      if ((payload.type || '産直') === '卸売' && role !== ADMIN) return deny()
       const producerName = payload.producer || (role === '生産者' ? (session.user?.name || '') : '')
       const d = await defaults(payload.product, producerName)
       const id = await createTransaction(ORG, {
@@ -111,6 +114,17 @@ export async function POST(req: NextRequest) {
       // 出荷確認・検品OK（販売者）。検品数を納品数として確定し販売中へ。産直委託向け。
       if (role !== '販売者' && role !== ADMIN) return deny()
       await confirmTransaction(ORG, payload.id, { deliveryQty: Number(payload.deliveryQty) || 0 })
+      return NextResponse.json({ ok: true })
+    }
+    case 'grade': {
+      // 買取の検品（組合）：A品/B品(等級別単価)・廃棄数を入力
+      if (role !== ADMIN) return deny()
+      await gradeTransaction(ORG, payload.id, {
+        aQty: Number(payload.aQty) || 0, aPrice: Number(payload.aPrice) || 0,
+        bQty: Number(payload.bQty) || 0, bPrice: Number(payload.bPrice) || 0,
+        discardQty: Number(payload.discardQty) || 0,
+        commissionRate: payload.commissionRate != null ? Number(payload.commissionRate) : undefined,
+      })
       return NextResponse.json({ ok: true })
     }
     case 'confirm': {
