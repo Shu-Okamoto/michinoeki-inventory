@@ -81,9 +81,11 @@ export default function SettlementPage() {
       ...previewProducer.map(g => ({ kind: 'producer', party: g.party, subtotal: g.subtotal, commission: 0, total: g.subtotal })),
       ...previewSeller.map(g => ({ kind: 'seller', party: g.party, subtotal: g.subtotal, commission: g.commission, total: g.total })),
     ]
-    const rows: (string | number)[][] = [['種別', '対象', '販売金額', '手数料', '請求合計', '期間']]
+    const [cy, cm] = period.split('-').map(Number)
+    const due = `${cm === 12 ? cy + 1 : cy}-${String(cm === 12 ? 1 : cm + 1).padStart(2, '0')}-10`
+    const rows: (string | number)[][] = [['種別', '対象', '販売金額', '手数料', '請求合計', '期間', '支払期日']]
     for (const inv of src) {
-      rows.push([inv.kind === 'producer' ? '生産者請求' : '販売者請求', inv.party, inv.subtotal, inv.commission, inv.total, period])
+      rows.push([inv.kind === 'producer' ? '生産者請求' : '販売者請求', inv.party, inv.subtotal, inv.commission, inv.total, period, due])
     }
     const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n')
     const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' })
@@ -99,11 +101,36 @@ export default function SettlementPage() {
     const prod = groupBy(base, 'producer')
     const sell = groupBy(base, 'seller')
     const esc = (s: any) => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' } as any)[c])
-    const rowsOf = (g: Grp, kind: 'producer' | 'seller') => g.tx.map(t => {
-      const bq = t.type === '卸売' ? (((t.gradeAQty || 0) + (t.gradeBQty || 0)) || t.deliveryQty) : ((t.salesQty || 0) + (t.discountQty || 0) + (t.souzaiQty || 0))
+
+    // 発行日・支払期日（対象期間の翌月10日）
+    const issueDate = new Date().toISOString().slice(0, 10)
+    const [py, pm] = period.split('-').map(Number)
+    const dueDate = `${pm === 12 ? py + 1 : py}-${String(pm === 12 ? 1 : pm + 1).padStart(2, '0')}-10`
+
+    // 消費税（内税表示・金額は税込のまま）: 商品=軽減税率8%, 組合手数料=10%
+    const taxIn8 = (amount: number) => Math.floor(amount * 8 / 108)
+    const taxIn10 = (amount: number) => Math.floor(amount * 10 / 110)
+
+    // 明細行: 買取(A品/B品入力あり)は等級ごとに行を分ける
+    const rowsOf = (g: Grp, kind: 'producer' | 'seller') => g.tx.flatMap(t => {
       const u = esc(t.unit || '')
       const tl = t.type === '卸売' ? '買取' : '産直委託'
-      return `<tr><td>${esc(t.date)}</td><td>${esc(t.product)}</td><td>${esc(tl)}</td><td class="r">${bq}${u}</td><td class="r">${yen(t.unitPrice)}</td><td class="r">${yen(t.amount)}</td>${kind === 'seller' ? `<td class="r">${yen(t.commission)}</td>` : ''}</tr>`
+      const commCell = (c: number) => kind === 'seller' ? `<td class="r">${yen(c)}</td>` : ''
+      if (t.type === '卸売' && ((t.gradeAQty || 0) + (t.gradeBQty || 0)) > 0) {
+        const rows: string[] = []
+        const rate = Number(t.commissionRate) || 0
+        if ((t.gradeAQty || 0) > 0) {
+          const amt = (t.gradeAQty || 0) * (t.gradeAPrice || 0)
+          rows.push(`<tr><td>${esc(t.date)}</td><td>${esc(t.product)}（A品）</td><td>${esc(tl)}</td><td class="r">${t.gradeAQty}${u}</td><td class="r">${yen(t.gradeAPrice)}</td><td class="r">${yen(amt)}</td>${commCell(Math.floor(amt * rate / 100))}</tr>`)
+        }
+        if ((t.gradeBQty || 0) > 0) {
+          const amt = (t.gradeBQty || 0) * (t.gradeBPrice || 0)
+          rows.push(`<tr><td>${esc(t.date)}</td><td>${esc(t.product)}（B品）</td><td>${esc(tl)}</td><td class="r">${t.gradeBQty}${u}</td><td class="r">${yen(t.gradeBPrice)}</td><td class="r">${yen(amt)}</td>${commCell(Math.floor(amt * rate / 100))}</tr>`)
+        }
+        return rows
+      }
+      const bq = t.type === '卸売' ? (t.deliveryQty || 0) : ((t.salesQty || 0) + (t.discountQty || 0) + (t.souzaiQty || 0))
+      return [`<tr><td>${esc(t.date)}</td><td>${esc(t.product)}</td><td>${esc(tl)}</td><td class="r">${bq}${u}</td><td class="r">${yen(t.unitPrice)}</td><td class="r">${yen(t.amount)}</td>${commCell(t.commission || 0)}</tr>`]
     }).join('')
 
     const invoiceBlock = (g: Grp, kind: 'producer' | 'seller') => {
@@ -111,25 +138,29 @@ export default function SettlementPage() {
       const to = kind === 'producer' ? `${ORG_NAME} 御中` : `${esc(g.party)} 御中`
       const from = kind === 'producer' ? esc(g.party) : ORG_NAME
       const total = kind === 'producer' ? g.subtotal : g.total
+      const tax8 = taxIn8(g.subtotal)
+      const tax10 = kind === 'seller' ? taxIn10(g.commission) : 0
       return `
       <section class="inv">
         <div class="head">
           <div><div class="title">請求書</div>
-          <div class="period">対象期間: ${esc(period)}</div></div>
+          <div class="period">対象期間: ${esc(period)}　発行日: ${esc(issueDate)}</div></div>
           <div class="org"><div class="orglabel">発行</div>${from}</div>
         </div>
         <div class="to">${to}</div>
         <div class="note">${kind === 'producer'
           ? '下記の通りご請求申し上げます（産直品の販売金額・全額）。'
           : '下記の通りご請求申し上げます（販売金額＋組合手数料）。'}</div>
+        <div class="due">お支払期日: <b>${esc(dueDate)}</b>（月末締め・翌月10日払い）</div>
         <table>
-          <thead><tr><th>日付</th><th>商品</th><th>種別</th><th class="r">数量</th><th class="r">単価</th><th class="r">販売金額</th>${kind === 'seller' ? '<th class="r">手数料</th>' : ''}</tr></thead>
+          <thead><tr><th>日付</th><th>商品</th><th>種別</th><th class="r">数量</th><th class="r">単価</th><th class="r">金額</th>${kind === 'seller' ? '<th class="r">手数料</th>' : ''}</tr></thead>
           <tbody>${rowsOf(g, kind)}</tbody>
         </table>
         <div class="totals">
-          <div>販売金額 計: <b>${yen(g.subtotal)}</b></div>
-          ${kind === 'seller' ? `<div>手数料 計: <b>${yen(g.commission)}</b></div>` : ''}
-          <div class="grand">ご請求額: <b>${yen(total)}</b></div>
+          <div>商品代金 計: <b>${yen(g.subtotal)}</b>　<span class="tax">（うち消費税 8%対象: ${yen(tax8)}）</span></div>
+          ${kind === 'seller' ? `<div>組合手数料 計: <b>${yen(g.commission)}</b>　<span class="tax">（うち消費税 10%対象: ${yen(tax10)}）</span></div>` : ''}
+          <div class="grand">ご請求額（税込）: <b>${yen(total)}</b></div>
+          <div class="tax">内消費税合計: ${yen(tax8 + tax10)}（軽減税率8%対象 ${yen(g.subtotal)} ／ 標準税率10%対象 ${kind === 'seller' ? yen(g.commission) : yen(0)}）</div>
         </div>
       </section>`
     }
@@ -143,7 +174,9 @@ export default function SettlementPage() {
         .org{font-size:13px;font-weight:700;text-align:right;}
         .orglabel{font-size:10px;font-weight:400;color:#888;}
         .to{font-size:18px;font-weight:700;margin:18px 0 6px;border-bottom:1px solid #333;display:inline-block;padding:0 24px 4px 0;}
-        .note{font-size:12px;color:#555;margin-bottom:12px;}
+        .note{font-size:12px;color:#555;margin-bottom:6px;}
+        .due{font-size:13px;margin-bottom:12px;}
+        .tax{font-size:11px;color:#777;font-weight:400;}
         table{width:100%;border-collapse:collapse;font-size:12px;}
         th,td{border:1px solid #ccc;padding:6px 8px;} th{background:#f3f3f3;text-align:left;}
         .r{text-align:right;font-variant-numeric:tabular-nums;}

@@ -266,8 +266,9 @@ export async function addSales(org: string, id: string, addQty: number, date?: s
   })
 }
 
-// 買取(卸売): 組合の検品。A品/B品(等級別単価)・廃棄数を入力して検品中(confirmed)へ。
-export async function gradeTransaction(org: string, id: string, f: { aQty: number; aPrice: number; bQty: number; bPrice: number; discardQty?: number; commissionRate?: number }): Promise<void> {
+// 買取(卸売): 組合の検品。A品/B品(等級別単価)・廃棄数を入力。
+// complete=true で検品確定＝成立(completed)。false は途中保存(検品中)。
+export async function gradeTransaction(org: string, id: string, f: { aQty: number; aPrice: number; bQty: number; bPrice: number; discardQty?: number; commissionRate?: number; complete?: boolean }): Promise<void> {
   await initTxTables()
   await withRetry(async () => {
     const sql = getSql()
@@ -277,7 +278,7 @@ export async function gradeTransaction(org: string, id: string, f: { aQty: numbe
         grade_b_qty = ${Number(f.bQty) || 0}, grade_b_price = ${Number(f.bPrice) || 0},
         discard_qty = ${Number(f.discardQty) || 0},
         commission_rate = COALESCE(${f.commissionRate ?? null}, commission_rate),
-        status = 'confirmed', updated_at = NOW()
+        status = ${f.complete ? 'completed' : 'confirmed'}, updated_at = NOW()
       WHERE org = ${org} AND id = ${id} AND type = '卸売' AND status IN ('shipped','confirmed')
     `
   })
