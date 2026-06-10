@@ -5,7 +5,7 @@ import { kvGet } from '@/lib/db'
 import { ORG } from '@/lib/users'
 import {
   createTransaction, confirmTransaction, enterSales, addSales, completeTransaction,
-  retrieveTransaction, souzaiTransaction, discountSaleTransaction,
+  retrieveTransaction, souzaiTransaction, discountSaleTransaction, discardTransaction,
   cancelTransaction, patchTransaction, deleteTransaction,
   listTransactions, generateInvoices, listInvoices, TxStatus,
 } from '@/lib/transactions'
@@ -100,8 +100,14 @@ export async function POST(req: NextRequest) {
       })
       return NextResponse.json({ ok: true, id })
     }
+    case 'inspect': {
+      // 出荷確認・検品OK（販売者）。検品数を納品数として確定し販売中へ。産直委託向け。
+      if (role !== '販売者' && role !== ADMIN) return deny()
+      await confirmTransaction(ORG, payload.id, { deliveryQty: Number(payload.deliveryQty) || 0 })
+      return NextResponse.json({ ok: true })
+    }
     case 'confirm': {
-      // 組合が納品数を確定・調整
+      // 組合が納品数を確定・調整（買取/卸売の仕切り）
       if (role !== ADMIN) return deny()
       await confirmTransaction(ORG, payload.id, {
         deliveryQty: Number(payload.deliveryQty) || 0,
@@ -145,6 +151,12 @@ export async function POST(req: NextRequest) {
       // 割引販売（半額〜定価）。産直のみ
       if (role !== '販売者' && role !== ADMIN) return deny()
       await discountSaleTransaction(ORG, payload.id, Number(payload.discountQty) || 0, Number(payload.discountUnitPrice) || 0)
+      return NextResponse.json({ ok: true })
+    }
+    case 'discard': {
+      // 廃棄（無償・棚残から減算）。産直のみ
+      if (role !== '販売者' && role !== ADMIN) return deny()
+      await discardTransaction(ORG, payload.id, Number(payload.discardQty) || 0)
       return NextResponse.json({ ok: true })
     }
     case 'cancel': {

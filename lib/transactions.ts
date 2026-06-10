@@ -27,6 +27,7 @@ export interface Transaction {
   retrievedQty: number       // 引取依頼で生産者が引き取る数（産直の売れ残り回収）
   souzaiQty: number          // 惣菜利用（販売者が3割価格で買取）した数
   discountQty: number        // 割引販売した数（産直）
+  discardQty: number         // 廃棄した数（無償・棚残から減算）
   discountUnitPrice: number  // 割引販売の単価（円・半額〜定価の範囲）
   unit: string               // 単位（袋/本/KG など・商品マスタからスナップショット）
   lastSalesDate?: string     // 直近に売上登録した日（YYYY-MM-DD）
@@ -133,6 +134,7 @@ function initTxTables(): Promise<void> {
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS souzai_qty INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discount_qty INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discount_unit_price INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discard_qty INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS unit TEXT;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS last_sales_date TEXT;
         CREATE TABLE IF NOT EXISTS iwkagri_invoices (
@@ -172,6 +174,7 @@ function rowToTx(r: any): Transaction {
     retrievedQty: Number(r.retrieved_qty) || 0,
     souzaiQty: Number(r.souzai_qty) || 0,
     discountQty: Number(r.discount_qty) || 0,
+    discardQty: Number(r.discard_qty) || 0,
     discountUnitPrice: Number(r.discount_unit_price) || 0,
     unit: r.unit || '',
     lastSalesDate: r.last_sales_date || undefined,
@@ -223,11 +226,11 @@ export async function addSales(org: string, id: string, addQty: number, date?: s
   await initTxTables()
   await withRetry(async () => {
     const sql = getSql()
-    const rows = await sql`SELECT type, delivery_qty, sales_qty, retrieved_qty, souzai_qty, discount_qty FROM iwkagri_transactions WHERE org = ${org} AND id = ${id}`
+    const rows = await sql`SELECT type, delivery_qty, sales_qty, retrieved_qty, souzai_qty, discount_qty, discard_qty FROM iwkagri_transactions WHERE org = ${org} AND id = ${id}`
     if (!rows.length) return
     const r = rows[0]
     const dq = Number(r.delivery_qty) || 0
-    const used = (Number(r.sales_qty) || 0) + (Number(r.retrieved_qty) || 0) + (Number(r.souzai_qty) || 0) + (Number(r.discount_qty) || 0)
+    const used = (Number(r.sales_qty) || 0) + (Number(r.retrieved_qty) || 0) + (Number(r.souzai_qty) || 0) + (Number(r.discount_qty) || 0) + (Number(r.discard_qty) || 0)
     const shelf = dq - used // 棚残
     let add = Number(addQty) || 0
     if (add < 0) add = 0
@@ -267,11 +270,11 @@ export async function enterSales(org: string, id: string, salesQty: number): Pro
   await initTxTables()
   await withRetry(async () => {
     const sql = getSql()
-    const rows = await sql`SELECT type, delivery_qty, retrieved_qty, souzai_qty, discount_qty FROM iwkagri_transactions WHERE org = ${org} AND id = ${id}`
+    const rows = await sql`SELECT type, delivery_qty, retrieved_qty, souzai_qty, discount_qty, discard_qty FROM iwkagri_transactions WHERE org = ${org} AND id = ${id}`
     if (!rows.length) return
     const type = rows[0].type
     const dq = Number(rows[0].delivery_qty) || 0
-    const other = (Number(rows[0].retrieved_qty) || 0) + (Number(rows[0].souzai_qty) || 0) + (Number(rows[0].discount_qty) || 0)
+    const other = (Number(rows[0].retrieved_qty) || 0) + (Number(rows[0].souzai_qty) || 0) + (Number(rows[0].discount_qty) || 0) + (Number(rows[0].discard_qty) || 0)
     let q = Number(salesQty) || 0
     if (q < 0) q = 0
     // 産直は「納品数 −（引取＋惣菜＋割引）」を超えて販売できない（棚残を負にしない）
@@ -303,17 +306,17 @@ export async function completeTransaction(org: string, id: string): Promise<void
 // 全チャネル合計が納品数に達したら completed。
 async function setChannelQty(
   org: string, id: string,
-  channel: 'retrieved_qty' | 'souzai_qty' | 'discount_qty',
+  channel: 'retrieved_qty' | 'souzai_qty' | 'discount_qty' | 'discard_qty',
   qty: number,
   extra?: { discountUnitPrice?: number; floorPrice?: boolean },
 ): Promise<void> {
   await initTxTables()
   await withRetry(async () => {
     const sql = getSql()
-    const rows = await sql`SELECT type, delivery_qty, sales_qty, retrieved_qty, souzai_qty, discount_qty, unit_price FROM iwkagri_transactions WHERE org = ${org} AND id = ${id}`
+    const rows = await sql`SELECT type, delivery_qty, sales_qty, retrieved_qty, souzai_qty, discount_qty, discard_qty, unit_price FROM iwkagri_transactions WHERE org = ${org} AND id = ${id}`
     if (!rows.length || rows[0].type === '卸売') return
     const dq = Number(rows[0].delivery_qty) || 0
-    const others = ['retrieved_qty', 'souzai_qty', 'discount_qty']
+    const others = ['retrieved_qty', 'souzai_qty', 'discount_qty', 'discard_qty']
       .filter(c => c !== channel)
       .reduce((a, c) => a + (Number((rows[0] as any)[c]) || 0), 0) + (Number(rows[0].sales_qty) || 0)
     let q = Number(qty) || 0
@@ -335,6 +338,8 @@ async function setChannelQty(
       await sql`UPDATE iwkagri_transactions SET retrieved_qty = ${q}, status = ${status}, updated_at = NOW() WHERE org = ${org} AND id = ${id} AND status IN ('confirmed','sales_entered')`
     } else if (channel === 'souzai_qty') {
       await sql`UPDATE iwkagri_transactions SET souzai_qty = ${q}, status = ${status}, updated_at = NOW() WHERE org = ${org} AND id = ${id} AND status IN ('confirmed','sales_entered')`
+    } else if (channel === 'discard_qty') {
+      await sql`UPDATE iwkagri_transactions SET discard_qty = ${q}, status = ${status}, updated_at = NOW() WHERE org = ${org} AND id = ${id} AND status IN ('confirmed','sales_entered')`
     } else {
       await sql`UPDATE iwkagri_transactions SET discount_qty = ${q}, discount_unit_price = ${dup}, status = ${status}, updated_at = NOW() WHERE org = ${org} AND id = ${id} AND status IN ('confirmed','sales_entered')`
     }
@@ -344,6 +349,11 @@ async function setChannelQty(
 // 引取依頼: 生産者が引き取る数を確定（産直のみ）
 export async function retrieveTransaction(org: string, id: string, retrievedQty: number): Promise<void> {
   return setChannelQty(org, id, 'retrieved_qty', retrievedQty)
+}
+
+// 廃棄: 売れ残りの廃棄数を記録（無償・棚残から減算・産直のみ）
+export async function discardTransaction(org: string, id: string, discardQty: number): Promise<void> {
+  return setChannelQty(org, id, 'discard_qty', discardQty)
 }
 
 // 惣菜利用: 販売者が3割価格で買い取る数を記録（産直のみ）
@@ -463,9 +473,9 @@ export async function generateInvoices(org: string, period: string): Promise<{ p
         SET status = 'settled', settled_qty = ${billQty}, invoice_id = ${period}, updated_at = NOW()
         WHERE org = ${org} AND id = ${t.id}`
       billed.push(t)
-      // 産直の棚残（納品−実売−引取−惣菜−割引）は翌月へ繰越（新規取引・販売待ち）
+      // 産直の棚残（納品−実売−引取−惣菜−割引−廃棄）は翌月へ繰越（新規取引・販売待ち）
       if (!isWholesale) {
-        const remainder = (t.deliveryQty || 0) - (t.salesQty || 0) - (t.retrievedQty || 0) - (t.souzaiQty || 0) - (t.discountQty || 0)
+        const remainder = (t.deliveryQty || 0) - (t.salesQty || 0) - (t.retrievedQty || 0) - (t.souzaiQty || 0) - (t.discountQty || 0) - (t.discardQty || 0)
         if (remainder > 0) {
           const nid = uid()
           await sql`INSERT INTO iwkagri_transactions
