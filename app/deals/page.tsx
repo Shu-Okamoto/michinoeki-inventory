@@ -124,9 +124,10 @@ export default function DealsPage() {
                   </select>}
             </div>
             <div>
-              <label style={s.label}>販売者（買い手）</label>
+              <label style={s.label}>販売先（買い手）</label>
               <select style={s.input} value={seller} onChange={e => setSeller(e.target.value)}>
                 <option value="">未定</option>
+                {type !== '卸売' && <option value="組合">組合（検品後に組合が販売先へ分配）</option>}
                 {sellerOpts.map((p: any) => <option key={p.id} value={p.name}>{p.name}</option>)}
               </select>
             </div>
@@ -255,12 +256,43 @@ export default function DealsPage() {
 
               {/* アクション */}
               <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                {/* 産直委託: 販売者の出荷確認・検品OK（検品数=納品数を確定し販売中へ） */}
-                {(isSeller || isAdmin) && t.type !== '卸売' && t.status === 'shipped' && (
+                {/* 産直委託(販売先指定済): 販売者の出荷確認・検品OK（検品数=納品数を確定し販売中へ） */}
+                {(isSeller || isAdmin) && t.type !== '卸売' && t.status === 'shipped' && t.seller !== '組合' && (
                   <>
                     <div><label style={s.miniLabel}>検品数</label><input style={s.miniInput} type="number" value={dv(t, 'deliveryQty', t.deliveryQty || t.shipQty)} onChange={e => setDraft(t.id, 'deliveryQty', e.target.value)} /></div>
                     <button style={s.btn} onClick={() => action('inspect', { id: t.id, deliveryQty: Number(dv(t, 'deliveryQty', t.deliveryQty || t.shipQty)) }, '✅ 検品OK（販売中へ）')}>検品OK（出荷確認）</button>
                   </>
+                )}
+
+                {/* 産直委託(組合宛て): 組合が検品し、複数の販売先へ分配して販売中へ */}
+                {isAdmin && t.type !== '卸売' && t.status === 'shipped' && t.seller === '組合' && (
+                  <div style={{ width: '100%', border: '1px dashed var(--accent2)', borderRadius: 10, padding: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>🏷️ 検品・販売先へ分配（出荷数 {t.shipQty}{u}）</div>
+                    {(dv(t, 'allocs', [{ seller: '', location: '', qty: t.shipQty }]) as any[]).map((a: any, i: number, arr: any[]) => (
+                      <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 6, flexWrap: 'wrap' }}>
+                        <div><label style={s.miniLabel}>販売先</label>
+                          <select style={{ ...s.miniInput, width: 160 }} value={a.seller} onChange={e => { const n = [...arr]; n[i] = { ...a, seller: e.target.value }; setDraft(t.id, 'allocs', n) }}>
+                            <option value="">選択</option>
+                            {sellerOpts.map((p: any) => <option key={p.id} value={p.name}>{p.name}</option>)}
+                          </select></div>
+                        <div><label style={s.miniLabel}>納品先</label>
+                          <select style={{ ...s.miniInput, width: 140 }} value={a.location} onChange={e => { const n = [...arr]; n[i] = { ...a, location: e.target.value }; setDraft(t.id, 'allocs', n) }}>
+                            <option value="">未指定</option>
+                            {(master.locations || []).map((l: string) => <option key={l}>{l}</option>)}
+                          </select></div>
+                        <div><label style={s.miniLabel}>納品数</label><input style={s.miniInput} type="number" min="0" value={a.qty} onChange={e => { const n = [...arr]; n[i] = { ...a, qty: e.target.value }; setDraft(t.id, 'allocs', n) }} /></div>
+                        {arr.length > 1 && <button style={s.btnDanger} onClick={() => setDraft(t.id, 'allocs', arr.filter((_: any, j: number) => j !== i))}>−</button>}
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                      <button style={s.btn2} onClick={() => { const arr = dv(t, 'allocs', [{ seller: '', location: '', qty: t.shipQty }]); setDraft(t.id, 'allocs', [...arr, { seller: '', location: '', qty: '' }]) }}>＋ 販売先を追加</button>
+                      <button style={s.btn} onClick={() => {
+                        const arr = (dv(t, 'allocs', []) as any[]).filter((a: any) => a.seller && Number(a.qty) > 0)
+                        if (arr.length === 0) { return }
+                        action('distribute', { id: t.id, allocations: arr.map((a: any) => ({ seller: a.seller, location: a.location, qty: Number(a.qty) })) }, '✅ 検品・分配しました（販売中へ）')
+                      }}>検品・分配する</button>
+                    </div>
+                  </div>
                 )}
 
                 {/* 買取(卸売): 組合が納品数・単価・手数料を確定 */}
@@ -275,12 +307,19 @@ export default function DealsPage() {
                   </>
                 )}
 
-                {/* 販売者: 当日の売上登録（その日の販売数を加算。残数があれば翌日も進行中） */}
+                {/* 販売者: 当日の売上登録（その日の販売数を加算。残数があれば翌日も販売中で繰越） */}
                 {(isSeller || isAdmin) && (t.status === 'confirmed' || t.status === 'sales_entered') && (
-                  <>
-                    <div><label style={s.miniLabel}>本日の販売数（棚残{shelf}{u}）</label><input style={s.miniInput} type="number" min="0" max={shelf} placeholder="0" value={dv(t, 'addQty', '')} onChange={e => setDraft(t.id, 'addQty', e.target.value)} /></div>
-                    <button style={s.btn} onClick={async () => { const ok = await action('add_sales', { id: t.id, addQty: Number(dv(t, 'addQty', 0)) }, '✅ 本日の売上を登録しました'); if (ok) setDraft(t.id, 'addQty', '') }}>売上登録</button>
-                  </>
+                  <div style={{ width: '100%', background: '#EFF7EA', border: '1px solid var(--accent)', borderRadius: 10, padding: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 12, fontWeight: 700 }}>📒 本日の売上登録</span>
+                      <span style={{ fontSize: 11, color: 'var(--muted)' }}>残数 <b style={{ color: 'var(--text)' }}>{shelf}{u}</b>（売れた数だけ入力して登録。残数は翌日に繰り越されます）</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                      <div><label style={s.miniLabel}>本日売れた数</label><input style={{ ...s.miniInput, width: 110, fontSize: 15, padding: '8px 10px' }} type="number" min="0" max={shelf} placeholder="0" value={dv(t, 'addQty', '')} onChange={e => setDraft(t.id, 'addQty', e.target.value)} /></div>
+                      <button style={{ ...s.btn, padding: '10px 22px' }} onClick={async () => { const ok = await action('add_sales', { id: t.id, addQty: Number(dv(t, 'addQty', 0)) }, '✅ 本日の売上を登録しました'); if (ok) setDraft(t.id, 'addQty', '') }}>売上登録</button>
+                      <span style={{ fontSize: 10, color: 'var(--muted)' }}>日報システム等からのAPI連携でも自動登録できます</span>
+                    </div>
+                  </div>
                 )}
 
                 {/* 買取(卸売): 販売者が受領確認 → 販売完了 */}
@@ -288,9 +327,10 @@ export default function DealsPage() {
                   <button style={s.btn} onClick={() => action('complete', { id: t.id }, '🎉 取引が成立しました')}>受領確認（完了）</button>
                 )}
 
-                {/* 棚残の処理（産直のみ・販売待ち/販売入力済） */}
+                {/* 棚残の処理（産直のみ・販売中） */}
                 {t.type !== '卸売' && (t.status === 'confirmed' || t.status === 'sales_entered') && (
                   <>
+                    <div style={{ width: '100%', fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginTop: 2 }}>残数の処理（割引・惣菜・引取・廃棄）※数量は累計で入力</div>
                     {/* 販売者: 割引販売（半額〜定価） */}
                     {(isSeller || isAdmin) && (
                       <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end', padding: '4px 8px', border: '1px dashed var(--border)', borderRadius: 8 }}>

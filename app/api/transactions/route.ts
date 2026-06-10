@@ -6,6 +6,7 @@ import { ORG } from '@/lib/users'
 import {
   createTransaction, confirmTransaction, enterSales, addSales, completeTransaction,
   retrieveTransaction, souzaiTransaction, discountSaleTransaction, discardTransaction,
+  distributeTransaction,
   cancelTransaction, patchTransaction, deleteTransaction,
   listTransactions, generateInvoices, listInvoices, TxStatus,
 } from '@/lib/transactions'
@@ -99,6 +100,12 @@ export async function POST(req: NextRequest) {
         commissionRate: payload.commissionRate != null ? Number(payload.commissionRate) : d.commissionRate,
       })
       return NextResponse.json({ ok: true, id })
+    }
+    case 'distribute': {
+      // 組合宛て出荷の検品・分配（組合のみ）。複数販売先へ納品先・納品数を割当て販売中へ
+      if (role !== ADMIN) return deny()
+      const result = await distributeTransaction(ORG, payload.id, payload.allocations || [])
+      return NextResponse.json({ ok: true, ...result })
     }
     case 'inspect': {
       // 出荷確認・検品OK（販売者）。検品数を納品数として確定し販売中へ。産直委託向け。
