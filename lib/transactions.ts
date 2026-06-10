@@ -356,6 +356,42 @@ export async function discardTransaction(org: string, id: string, discardQty: nu
   return setChannelQty(org, id, 'discard_qty', discardQty)
 }
 
+// 組合宛て出荷の検品・分配（産直委託）:
+// 組合が検品し、複数の販売先へ納品先・納品数を割り当てて「販売中」にする。
+// 最初の割当は元取引を更新し、2件目以降は元取引を複製して作成（carry_from_id で紐付け）。
+export interface Allocation { seller: string; location?: string; qty: number }
+export async function distributeTransaction(org: string, id: string, allocations: Allocation[]): Promise<{ count: number }> {
+  await initTxTables()
+  return withRetry(async () => {
+    const sql = getSql()
+    const rows = await sql`SELECT * FROM iwkagri_transactions WHERE org = ${org} AND id = ${id}`
+    if (!rows.length) return { count: 0 }
+    const t = rowToTx(rows[0])
+    if (t.type === '卸売' || !['shipped', 'confirmed'].includes(t.status)) return { count: 0 }
+    const allocs = (allocations || []).map(a => ({ seller: a.seller || '', location: a.location || '', qty: Number(a.qty) || 0 }))
+      .filter(a => a.seller && a.qty > 0)
+    if (allocs.length === 0) return { count: 0 }
+
+    // 1件目: 元取引を更新して販売中へ
+    const first = allocs[0]
+    await sql`
+      UPDATE iwkagri_transactions
+      SET seller = ${first.seller}, location = ${first.location}, delivery_qty = ${first.qty},
+          status = 'confirmed', updated_at = NOW()
+      WHERE org = ${org} AND id = ${id}
+    `
+    // 2件目以降: 複製して作成
+    for (const a of allocs.slice(1)) {
+      const nid = uid()
+      await sql`INSERT INTO iwkagri_transactions
+        (id, org, type, status, date, producer, seller, location, product, ship_qty, delivery_qty, sales_qty, unit, unit_price, commission_rate, carry_from_id)
+        VALUES (${nid}, ${org}, ${t.type}, 'confirmed', ${t.date}, ${t.producer}, ${a.seller}, ${a.location}, ${t.product},
+                ${a.qty}, ${a.qty}, 0, ${t.unit || ''}, ${t.unitPrice}, ${t.commissionRate}, ${t.id})`
+    }
+    return { count: allocs.length }
+  })
+}
+
 // 惣菜利用: 販売者が3割価格で買い取る数を記録（産直のみ）
 export async function souzaiTransaction(org: string, id: string, souzaiQty: number): Promise<void> {
   return setChannelQty(org, id, 'souzai_qty', souzaiQty)
