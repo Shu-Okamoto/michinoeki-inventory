@@ -123,6 +123,8 @@ export async function POST(req: NextRequest) {
         aQty: Number(payload.aQty) || 0, aPrice: Number(payload.aPrice) || 0,
         bQty: Number(payload.bQty) || 0, bPrice: Number(payload.bPrice) || 0,
         discardQty: Number(payload.discardQty) || 0,
+        confirmedQty: payload.confirmedQty != null ? Number(payload.confirmedQty) : undefined,
+        deliveryQty: payload.deliveryQty != null ? Number(payload.deliveryQty) : undefined,
         commissionRate: payload.commissionRate != null ? Number(payload.commissionRate) : undefined,
         complete: !!payload.complete,
       })

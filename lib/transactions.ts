@@ -31,7 +31,8 @@ export interface Transaction {
   gradeAQty: number          // 買取: A品数
   gradeAPrice: number        // 買取: A品単価
   gradeBQty: number          // 買取: B品数
-  gradeBPrice: number        // 買取: B品単価
+  gradeBPrice: number        // 買取: B品単価（割引単価）
+  confirmedQty: number       // 買取: 納品確認数（組合が確認した受領総数）
   discountUnitPrice: number  // 割引販売の単価（円・半額〜定価の範囲）
   unit: string               // 単位（袋/本/KG など・商品マスタからスナップショット）
   lastSalesDate?: string     // 直近に売上登録した日（YYYY-MM-DD）
@@ -151,6 +152,7 @@ function initTxTables(): Promise<void> {
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS grade_a_price INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS grade_b_qty INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS grade_b_price INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS confirmed_qty INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS unit TEXT;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS last_sales_date TEXT;
         CREATE TABLE IF NOT EXISTS iwkagri_invoices (
@@ -195,6 +197,7 @@ function rowToTx(r: any): Transaction {
     gradeAPrice: Number(r.grade_a_price) || 0,
     gradeBQty: Number(r.grade_b_qty) || 0,
     gradeBPrice: Number(r.grade_b_price) || 0,
+    confirmedQty: Number(r.confirmed_qty) || 0,
     discountUnitPrice: Number(r.discount_unit_price) || 0,
     unit: r.unit || '',
     lastSalesDate: r.last_sales_date || undefined,
@@ -268,12 +271,14 @@ export async function addSales(org: string, id: string, addQty: number, date?: s
 
 // 買取(卸売): 組合の検品。A品/B品(等級別単価)・廃棄数を入力。
 // complete=true で検品確定＝成立(completed)。false は途中保存(検品中)。
-export async function gradeTransaction(org: string, id: string, f: { aQty: number; aPrice: number; bQty: number; bPrice: number; discardQty?: number; commissionRate?: number; complete?: boolean }): Promise<void> {
+export async function gradeTransaction(org: string, id: string, f: { aQty: number; aPrice: number; bQty: number; bPrice: number; discardQty?: number; confirmedQty?: number; deliveryQty?: number; commissionRate?: number; complete?: boolean }): Promise<void> {
   await initTxTables()
   await withRetry(async () => {
     const sql = getSql()
     await sql`
       UPDATE iwkagri_transactions SET
+        delivery_qty = COALESCE(${f.deliveryQty ?? null}, delivery_qty),
+        confirmed_qty = ${Number(f.confirmedQty) || 0},
         grade_a_qty = ${Number(f.aQty) || 0}, grade_a_price = ${Number(f.aPrice) || 0},
         grade_b_qty = ${Number(f.bQty) || 0}, grade_b_price = ${Number(f.bPrice) || 0},
         discard_qty = ${Number(f.discardQty) || 0},
