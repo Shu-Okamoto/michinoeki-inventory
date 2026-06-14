@@ -80,10 +80,12 @@ export default function DealsPage() {
 
   async function createTx() {
     const p = isProducer ? myName : producer
-    if (!type || !p || !prod || !qty || !date) { showToast('⚠️ 種別・生産者・商品・数量・日付は必須です'); return }
+    // 買取(卸売)は登録時に納品数が無くてもOK（検品で確定）。産直は数量必須。
+    const needQty = type !== '卸売'
+    if (!type || !p || !prod || !date || (needQty && !qty)) { showToast('⚠️ 種別・生産者・商品・日付' + (needQty ? '・数量' : '') + 'は必須です'); return }
     const ok = await action('create',
-      { type, date, producer: p, seller, location: loc, product: prod, shipQty: Number(qty) },
-      '✅ 出荷を登録しました')
+      { type, date, producer: p, seller, location: loc, product: prod, shipQty: Number(qty) || 0 },
+      type === '卸売' ? '✅ 納品を登録しました' : '✅ 出荷を登録しました')
     if (ok) { setQty('') }
   }
 
@@ -226,12 +228,13 @@ export default function DealsPage() {
               {/* 数量の流れ */}
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12, fontFamily: 'Space Mono,monospace', fontSize: 13 }}>
                 {t.type === '卸売' ? (<>
-                  <span style={{ color: 'var(--muted)', fontSize: 11 }}>納品</span><b>{t.deliveryQty || t.shipQty}{u}</b>
+                  <span style={{ color: 'var(--muted)', fontSize: 11 }}>納品</span><b>{t.deliveryQty || t.shipQty || 0}{u}</b>
+                  {(t.confirmedQty || 0) > 0 && (<><span style={{ color: 'var(--muted)' }}>/</span><span style={{ color: 'var(--muted)', fontSize: 11 }}>確認</span><b>{t.confirmedQty}{u}</b></>)}
                   <span style={{ color: 'var(--muted)' }}>→</span>
                   <span style={{ color: 'var(--muted)', fontSize: 11 }}>A品</span><b>{t.gradeAQty || 0}{u}</b>
                   <span style={{ color: 'var(--muted)' }}>/</span>
                   <span style={{ color: 'var(--muted)', fontSize: 11 }}>B品</span><b>{t.gradeBQty || 0}{u}</b>
-                  {(t.discardQty || 0) > 0 && (<><span style={{ color: 'var(--muted)' }}>/</span><span style={{ color: 'var(--muted)', fontSize: 11 }}>廃棄</span><b>{t.discardQty}{u}</b></>)}
+                  {(t.discardQty || 0) > 0 && (<><span style={{ color: 'var(--muted)' }}>/</span><span style={{ color: 'var(--muted)', fontSize: 11 }}>不良品</span><b>{t.discardQty}{u}</b></>)}
                 </>) : (<>
                 <span style={{ color: 'var(--muted)', fontSize: 11 }}>出荷</span><b>{t.shipQty}{u}</b>
                 <span style={{ color: 'var(--muted)' }}>→</span>
@@ -320,22 +323,35 @@ export default function DealsPage() {
                   </div>
                 )}
 
-                {/* 買取(卸売): 組合の検品（A品・B品 等級別単価・廃棄） */}
-                {isAdmin && t.type === '卸売' && (t.status === 'shipped' || t.status === 'confirmed') && (
+                {/* 買取(卸売): 組合の検品（納品数・納品確認数・A品/B品 等級別単価・不良品） */}
+                {isAdmin && t.type === '卸売' && (t.status === 'shipped' || t.status === 'confirmed') && (() => {
+                  const gradePayload = () => ({
+                    id: t.id,
+                    deliveryQty: Number(dv(t, 'gDelivery', t.deliveryQty || t.shipQty || 0)),
+                    confirmedQty: Number(dv(t, 'confirmedQty', t.confirmedQty || t.deliveryQty || t.shipQty || 0)),
+                    aQty: Number(dv(t, 'aQty', t.gradeAQty || 0)), aPrice: Number(dv(t, 'aPrice', t.gradeAPrice || t.unitPrice)),
+                    bQty: Number(dv(t, 'bQty', t.gradeBQty || 0)), bPrice: Number(dv(t, 'bPrice', t.gradeBPrice || 0)),
+                    discardQty: Number(dv(t, 'discardQty', t.discardQty || 0)),
+                    commissionRate: Number(dv(t, 'commissionRate', t.commissionRate)),
+                  })
+                  return (
                   <div style={{ width: '100%', border: '1px dashed var(--accent2)', borderRadius: 10, padding: 12 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>🔍 検品（納品数 {t.deliveryQty || t.shipQty}{u}）</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>🔍 検品（買取）</div>
                     <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                      <div><label style={s.miniLabel}>A品数</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'aQty', t.gradeAQty || (t.deliveryQty || t.shipQty))} onChange={e => setDraft(t.id, 'aQty', e.target.value)} /></div>
+                      <div><label style={s.miniLabel}>納品数</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'gDelivery', t.deliveryQty || t.shipQty || 0)} onChange={e => setDraft(t.id, 'gDelivery', e.target.value)} /></div>
+                      <div><label style={s.miniLabel}>納品確認数</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'confirmedQty', t.confirmedQty || t.deliveryQty || t.shipQty || 0)} onChange={e => setDraft(t.id, 'confirmedQty', e.target.value)} /></div>
+                      <div><label style={s.miniLabel}>A品数</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'aQty', t.gradeAQty || 0)} onChange={e => setDraft(t.id, 'aQty', e.target.value)} /></div>
                       <div><label style={s.miniLabel}>A単価(円)</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'aPrice', t.gradeAPrice || t.unitPrice)} onChange={e => setDraft(t.id, 'aPrice', e.target.value)} /></div>
                       <div><label style={s.miniLabel}>B品数</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'bQty', t.gradeBQty || 0)} onChange={e => setDraft(t.id, 'bQty', e.target.value)} /></div>
-                      <div><label style={s.miniLabel}>B単価(円)</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'bPrice', t.gradeBPrice || 0)} onChange={e => setDraft(t.id, 'bPrice', e.target.value)} /></div>
-                      <div><label style={s.miniLabel}>廃棄数</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'discardQty', t.discardQty || 0)} onChange={e => setDraft(t.id, 'discardQty', e.target.value)} /></div>
+                      <div><label style={s.miniLabel}>B単価(割引・円)</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'bPrice', t.gradeBPrice || 0)} onChange={e => setDraft(t.id, 'bPrice', e.target.value)} /></div>
+                      <div><label style={s.miniLabel}>不良品数</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'discardQty', t.discardQty || 0)} onChange={e => setDraft(t.id, 'discardQty', e.target.value)} /></div>
                       <div><label style={s.miniLabel}>手数料率(%)</label><input style={s.miniInput} type="number" step="0.1" value={dv(t, 'commissionRate', t.commissionRate)} onChange={e => setDraft(t.id, 'commissionRate', e.target.value)} /></div>
-                      <button style={s.btn2} onClick={() => action('grade', { id: t.id, aQty: Number(dv(t, 'aQty', t.gradeAQty || (t.deliveryQty || t.shipQty))), aPrice: Number(dv(t, 'aPrice', t.gradeAPrice || t.unitPrice)), bQty: Number(dv(t, 'bQty', t.gradeBQty || 0)), bPrice: Number(dv(t, 'bPrice', t.gradeBPrice || 0)), discardQty: Number(dv(t, 'discardQty', t.discardQty || 0)), commissionRate: Number(dv(t, 'commissionRate', t.commissionRate)) }, '✅ 検品を途中保存しました')}>途中保存</button>
-                      <button style={s.btn} onClick={() => action('grade', { id: t.id, complete: true, aQty: Number(dv(t, 'aQty', t.gradeAQty || (t.deliveryQty || t.shipQty))), aPrice: Number(dv(t, 'aPrice', t.gradeAPrice || t.unitPrice)), bQty: Number(dv(t, 'bQty', t.gradeBQty || 0)), bPrice: Number(dv(t, 'bPrice', t.gradeBPrice || 0)), discardQty: Number(dv(t, 'discardQty', t.discardQty || 0)), commissionRate: Number(dv(t, 'commissionRate', t.commissionRate)) }, '🎉 検品確定（成立・精算待ちへ）')}>検品確定（成立）</button>
+                      <button style={s.btn2} onClick={() => action('grade', gradePayload(), '✅ 検品を途中保存しました')}>途中保存</button>
+                      <button style={s.btn} onClick={() => action('grade', { ...gradePayload(), complete: true }, '🎉 検品確定（成立・精算待ちへ）')}>検品確定（成立）</button>
                     </div>
                   </div>
-                )}
+                  )
+                })()}
 
                 {/* 販売者: 当日の売上登録（産直委託のみ。買取は検品で成立し売上登録なし） */}
                 {(isSeller || isAdmin) && t.type !== '卸売' && (t.status === 'confirmed' || t.status === 'sales_entered') && (
