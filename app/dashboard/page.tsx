@@ -64,7 +64,7 @@ export default function DashboardPage() {
         <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
           <select className={styles.select} value={filterLoc} onChange={e => setFilterLoc(e.target.value)}>
             <option value="">すべての道の駅</option>
-            {data?.locations?.map((l: string) => <option key={l} value={l}>{l}</option>)}
+            {data?.locations?.map((l: any) => <option key={l.id || l} value={l.name || l}>{l.name || l}</option>)}
           </select>
           <button className={styles.btnSm} onClick={fetchData}>🔄 更新</button>
         </div>

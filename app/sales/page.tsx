@@ -95,7 +95,7 @@ export default function SalesPage() {
               <label style={s.label}>販売先（道の駅）</label>
               <select style={s.select} value={loc} onChange={e => setLoc(e.target.value)}>
                 <option value="">選択してください</option>
-                {data.locations?.map((l: string) => <option key={l} value={l}>{l}</option>)}
+                {data.locations?.map((l: any) => <option key={l.id || l} value={l.name || l}>{l.name || l}</option>)}
               </select>
             </div>
             <div>
