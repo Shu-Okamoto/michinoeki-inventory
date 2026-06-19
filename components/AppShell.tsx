@@ -12,6 +12,7 @@ const ITEMS = {
   send:      { href: '/send',      label: '📦 納品入力' },
   dashboard: { href: '/dashboard', label: '📊 在庫・納品状況' },
   kyohai:    { href: '/kyohai',    label: '🚚 共配システム' },
+  master:    { href: '/master',    label: '🌱 商品・道の駅 登録' },
   producers: { href: '/producers', label: '👤 ユーザーマスタ' },
   sales:     { href: '/sales',     label: '🧾 売上入力' },
   email:     { href: '/email',     label: '✉️ Gmail連携' },
@@ -49,6 +50,7 @@ function groupsForView(view: View) {
     { title: 'お知らせ', items: [ITEMS.news] },
     { title: '📦 道の駅 在庫管理', items: [ITEMS.dashboard, ITEMS.send, ITEMS.kyohai] },
     { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals] },
+    { title: '⚙️ マスタ登録', items: [ITEMS.master] },
   ]
   return []
 }
