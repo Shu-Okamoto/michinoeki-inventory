@@ -10,10 +10,6 @@ export default function SendPage() {
   const [loc, setLoc] = useState(''); const [prod, setProd] = useState('')
   const [qty, setQty] = useState(''); const [date, setDate] = useState(today())
   const [toast, setToast] = useState('')
-  // 商品申請フォーム
-  const [propName, setPropName] = useState(''); const [propUnit, setPropUnit] = useState(''); const [propPrice, setPropPrice] = useState('')
-  // 道の駅登録フォーム
-  const [newLoc, setNewLoc] = useState('')
 
   useEffect(() => { fetch('/api/inventory').then(r=>r.json()).then(setData) }, [])
 
@@ -30,21 +26,6 @@ export default function SendPage() {
     setQty(''); showToast(`✅ ${loc} に ${prod} を ${qty}個 納品登録しました`)
   }
 
-  async function addLocation() {
-    if (!newLoc) { showToast('⚠️ 道の駅名を入力してください'); return }
-    await api('add_location', { name: newLoc })
-    setNewLoc(''); showToast('✅ 道の駅を登録しました')
-  }
-
-  async function proposeProduct() {
-    if (!propName) { showToast('⚠️ 商品名を入力してください'); return }
-    const res = await fetch('/api/inventory', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'propose_product',payload:{name:propName,unit:propUnit,unitPrice:Number(propPrice)||0}}) })
-    const j = await res.json().catch(()=>({}))
-    if (!res.ok) { showToast('⚠️ '+(j.error||'申請に失敗しました')); return }
-    setPropName(''); setPropUnit(''); setPropPrice('')
-    fetch('/api/inventory').then(r=>r.json()).then(setData)
-    showToast(j.status==='approved' ? '✅ 商品を登録しました' : '✅ 商品を申請しました（組合の承認待ち）')
-  }
 
   const s = { box:{background:'var(--surface)',border:'1px solid var(--border)',borderRadius:12,padding:20,marginBottom:24} as any,
     label:{fontSize:11,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase' as any,color:'var(--muted)',display:'block',marginBottom:6},
@@ -75,46 +56,8 @@ export default function SendPage() {
         <button style={s.btn} onClick={addShipment}>📦 納品登録する</button>
       </div>
 
-      {/* 商品マスタの申請（生産者→組合が承認） */}
-      {/* 道の駅の登録（自分の納品先） */}
-      <div style={s.box}>
-        <h2 style={{fontSize:14,fontWeight:700,marginBottom:8}}>🏪 道の駅（納品先）を登録</h2>
-        <p style={{fontSize:11,color:'var(--muted)',marginBottom:12}}>自分が納品する道の駅を登録できます（自分の納品先候補に出ます）。</p>
-        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
-          <input style={{...s.input,maxWidth:280}} value={newLoc} onChange={e=>setNewLoc(e.target.value)} placeholder="道の駅名（例: 道の駅 ○○）" />
-          <button style={s.btn} onClick={addLocation}>登録する</button>
-        </div>
-        {(data.locations||[]).filter((l:any)=> (l.producer||'')===(data.me?.name||'') || !l.producer).length>0 && (
-          <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
-            {(data.locations||[]).filter((l:any)=> (l.producer||'')===(data.me?.name||'') || !l.producer).map((l:any)=>(
-              <span key={l.id} style={{fontSize:12,background:'var(--surface2)',border:'1px solid var(--border)',borderRadius:999,padding:'4px 10px',display:'inline-flex',gap:6,alignItems:'center'}}>
-                🏪 {l.name}{l.producer ? '' : '（共通）'}
-                {(l.producer||'')===(data.me?.name||'') && l.producer && <button onClick={()=>api('remove_location',{id:l.id})} style={{border:'none',background:'none',color:'var(--danger)',cursor:'pointer',fontSize:12}}>×</button>}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div style={s.box}>
-        <h2 style={{fontSize:14,fontWeight:700,marginBottom:8}}>🌱 商品を申請</h2>
-        <p style={{fontSize:11,color:'var(--muted)',marginBottom:12}}>新しい商品は申請後、組合管理者の承認で使えるようになります（承認まで納品の商品選択には出ません）。</p>
-        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
-          <input style={{...s.input,maxWidth:220}} value={propName} onChange={e=>setPropName(e.target.value)} placeholder="商品名（例: 白瓜）" />
-          <input style={{...s.input,maxWidth:130}} list="unit-list" value={propUnit} onChange={e=>setPropUnit(e.target.value)} placeholder="単位（袋/本/KG）" />
-          <input style={{...s.input,maxWidth:130}} type="number" min="0" value={propPrice} onChange={e=>setPropPrice(e.target.value)} placeholder="希望単価(円)" />
-          <button style={s.btn} onClick={proposeProduct}>申請する</button>
-        </div>
-        <datalist id="unit-list"><option value="袋" /><option value="本" /><option value="個" /><option value="KG" /><option value="束" /><option value="パック" /><option value="箱" /></datalist>
-        {(data.products||[]).filter((p:any)=>(p.status||'approved')==='pending').length>0 && (
-          <div style={{display:'flex',flexDirection:'column',gap:6}}>
-            {(data.products||[]).filter((p:any)=>(p.status||'approved')==='pending').map((p:any)=>(
-              <div key={p.name} style={{fontSize:12,color:'var(--muted)'}}>
-                ⏳ <b style={{color:'var(--text)'}}>{p.name}</b> 承認待ち{p.proposedBy?`（申請: ${p.proposedBy}）`:''}
-              </div>
-            ))}
-          </div>
-        )}
+      <div style={{ ...s.box, fontSize: 12, color: 'var(--muted)' }}>
+        🌱 商品・🏪 道の駅の登録は、左メニューの「<b style={{ color: 'var(--text)' }}>マスタ登録</b>」から行えます。
       </div>
 
       <div style={{border:'1px solid var(--border)',borderRadius:12,overflow:'auto'}}>
