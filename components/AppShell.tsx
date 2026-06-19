@@ -33,16 +33,22 @@ const VIEW_LABEL: Record<View, string> = {
 }
 
 function groupsForView(view: View) {
+  // 機能を明確に分離: ①お知らせ ②道の駅 在庫管理(当初機能) ③産直・卸売ワークフロー ④管理
   if (view === 'admin') return [
-    { title: '産直/卸売ワークフロー', items: [ITEMS.deals, ITEMS.settlement] },
-    { title: '生産者ポータル', items: [ITEMS.news, ITEMS.send, ITEMS.dashboard, ITEMS.kyohai] },
-    { title: '組合管理（アグリパートナーズ）', items: [ITEMS.producers, ITEMS.sales, ITEMS.history, ITEMS.email, ITEMS.settings] },
+    { title: 'お知らせ', items: [ITEMS.news] },
+    { title: '📦 道の駅 在庫管理', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history, ITEMS.email, ITEMS.kyohai] },
+    { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals, ITEMS.settlement] },
+    { title: '⚙️ 管理', items: [ITEMS.producers, ITEMS.settings] },
   ]
   if (view === 'seller') return [
-    { title: '販売会社ビュー', items: [ITEMS.news, ITEMS.deals, ITEMS.sales, ITEMS.history] },
+    { title: 'お知らせ', items: [ITEMS.news] },
+    { title: '📦 道の駅 在庫管理', items: [ITEMS.sales, ITEMS.history] },
+    { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals] },
   ]
   if (view === 'producer') return [
-    { title: '生産者ビュー', items: [ITEMS.news, ITEMS.deals, ITEMS.send, ITEMS.dashboard, ITEMS.kyohai] },
+    { title: 'お知らせ', items: [ITEMS.news] },
+    { title: '📦 道の駅 在庫管理', items: [ITEMS.dashboard, ITEMS.send, ITEMS.kyohai] },
+    { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals] },
   ]
   return []
 }
