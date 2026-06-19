@@ -9,13 +9,13 @@ const ITEMS = {
   news:      { href: '/news',      label: '📢 お知らせ' },
   deals:     { href: '/deals',     label: '🤝 取引（産直/卸売）' },
   settlement:{ href: '/settlement',label: '🧮 月末締め・請求書' },
-  send:      { href: '/send',      label: '📦 みかわ納品数入力' },
+  send:      { href: '/send',      label: '📦 納品入力' },
   dashboard: { href: '/dashboard', label: '📊 在庫・納品状況' },
   kyohai:    { href: '/kyohai',    label: '🚚 共配システム' },
   producers: { href: '/producers', label: '👤 ユーザーマスタ' },
-  sales:     { href: '/sales',     label: '🧾 レジ通過数入力' },
+  sales:     { href: '/sales',     label: '🧾 売上入力' },
   email:     { href: '/email',     label: '✉️ Gmail連携' },
-  history:   { href: '/history',   label: '📋 販売履歴・売上明細' },
+  history:   { href: '/history',   label: '📋 履歴' },
   settings:  { href: '/settings',  label: '⚙️ 設定' },
 }
 
