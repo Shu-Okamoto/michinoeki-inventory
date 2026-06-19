@@ -11,6 +11,13 @@ export const maxDuration = 30
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2) }
 
+// 道の駅(locations)を {id, name, producer} に正規化（旧データの文字列にも対応）
+function normLocations(list: any[]): any[] {
+  return (list || []).map((l: any) => typeof l === 'string'
+    ? { id: l, name: l, producer: '' }
+    : { id: l.id || l.name, name: l.name, producer: l.producer || '' })
+}
+
 // 商品マスタの単価を引く（売上/出荷登録時に単価をスナップショットするため）
 async function productPriceMap(): Promise<Record<string, number>> {
   const products: any[] = await kvGet(ORG, 'products') || []
@@ -66,7 +73,7 @@ export async function GET(req: NextRequest) {
 
   const role = (session.user as any)?.role || 'guest'
   return NextResponse.json({
-    locations: locations || [],
+    locations: normLocations(locations as any[]),
     products: products || [],
     shipments: shipments || [],
     sales: sales || [],
@@ -80,7 +87,7 @@ export async function GET(req: NextRequest) {
 
 // 管理者のみ許可されるアクション
 const ADMIN_ACTIONS = new Set([
-  'add_location', 'remove_location', 'add_product', 'remove_product', 'update_product',
+  'add_product', 'remove_product', 'update_product',
   'approve_product', 'reject_product',
   'add_producer', 'update_producer', 'remove_producer',
   'add_announcement', 'remove_announcement',
@@ -101,14 +108,29 @@ export async function POST(req: NextRequest) {
 
   switch (action) {
     case 'add_location': {
-      const list: string[] = await kvGet(ORG, 'locations') || []
-      if (!list.includes(payload.name)) list.push(payload.name)
+      // 道の駅の登録。生産者は自分の道の駅、組合は共通(ワークフローでも使用)。
+      if (role !== '生産者' && role !== '組合管理者') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
+      if (!payload.name) return NextResponse.json({ error: '名称が必要です' }, { status: 400 })
+      const list = normLocations(await kvGet(ORG, 'locations') || [])
+      const producer = role === '生産者' ? (session.user?.name || '') : (payload.producer || '')
+      if (!list.find((l: any) => l.name === payload.name && (l.producer || '') === producer)) {
+        list.push({ id: uid(), name: payload.name, producer })
+      }
       await kvSet(ORG, 'locations', list)
       return NextResponse.json({ ok: true })
     }
     case 'remove_location': {
-      const list: string[] = await kvGet(ORG, 'locations') || []
-      await kvSet(ORG, 'locations', list.filter((l: string) => l !== payload.name))
+      if (role !== '生産者' && role !== '組合管理者') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
+      const me = session.user?.name || ''
+      const list = normLocations(await kvGet(ORG, 'locations') || [])
+      const filtered = list.filter((l: any) => {
+        const hit = payload.id ? l.id === payload.id : l.name === payload.name
+        if (!hit) return true
+        // 生産者は自分の道の駅のみ削除可
+        if (role !== '組合管理者' && (l.producer || '') !== me) return true
+        return false
+      })
+      await kvSet(ORG, 'locations', filtered)
       return NextResponse.json({ ok: true })
     }
     case 'add_producer': {

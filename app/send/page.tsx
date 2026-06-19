@@ -12,6 +12,8 @@ export default function SendPage() {
   const [toast, setToast] = useState('')
   // 商品申請フォーム
   const [propName, setPropName] = useState(''); const [propUnit, setPropUnit] = useState(''); const [propPrice, setPropPrice] = useState('')
+  // 道の駅登録フォーム
+  const [newLoc, setNewLoc] = useState('')
 
   useEffect(() => { fetch('/api/inventory').then(r=>r.json()).then(setData) }, [])
 
@@ -26,6 +28,12 @@ export default function SendPage() {
     if (!producer||!loc||!prod||!qty||!date) { showToast('⚠️ すべての項目を入力してください'); return }
     await api('add_shipment', { date, producer, location:loc, product:prod, qty:Number(qty) })
     setQty(''); showToast(`✅ ${loc} に ${prod} を ${qty}個 納品登録しました`)
+  }
+
+  async function addLocation() {
+    if (!newLoc) { showToast('⚠️ 道の駅名を入力してください'); return }
+    await api('add_location', { name: newLoc })
+    setNewLoc(''); showToast('✅ 道の駅を登録しました')
   }
 
   async function proposeProduct() {
@@ -55,7 +63,7 @@ export default function SendPage() {
             ['組合員（生産者）', <select style={s.input} value={producer} onChange={e=>setProducer(e.target.value)}>
               <option value="">選択</option>{(data.producers||[]).filter((p:any)=>(p.role||'生産者')==='生産者').map((p:any)=><option key={p.id} value={p.name}>{p.name}</option>)}</select>],
             ['納品先（道の駅）', <select style={s.input} value={loc} onChange={e=>setLoc(e.target.value)}>
-              <option value="">選択</option>{data.locations.map((l:string)=><option key={l}>{l}</option>)}</select>],
+              <option value="">選択</option>{(data.locations||[]).filter((l:any)=>!l.producer || !producer || l.producer===producer).map((l:any)=><option key={l.id} value={l.name}>{l.name}</option>)}</select>],
             ['商品', <select style={s.input} value={prod} onChange={e=>setProd(e.target.value)}>
               <option value="">選択</option>{data.products.filter((p:any)=>(p.status||'approved')==='approved' && (!p.producer || !producer || p.producer===producer)).map((p:any)=><option key={p.id || p.name}>{p.name}</option>)}</select>],
             ['個数', <input style={s.input} type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)} placeholder="20" />],
@@ -68,6 +76,26 @@ export default function SendPage() {
       </div>
 
       {/* 商品マスタの申請（生産者→組合が承認） */}
+      {/* 道の駅の登録（自分の納品先） */}
+      <div style={s.box}>
+        <h2 style={{fontSize:14,fontWeight:700,marginBottom:8}}>🏪 道の駅（納品先）を登録</h2>
+        <p style={{fontSize:11,color:'var(--muted)',marginBottom:12}}>自分が納品する道の駅を登録できます（自分の納品先候補に出ます）。</p>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
+          <input style={{...s.input,maxWidth:280}} value={newLoc} onChange={e=>setNewLoc(e.target.value)} placeholder="道の駅名（例: 道の駅 ○○）" />
+          <button style={s.btn} onClick={addLocation}>登録する</button>
+        </div>
+        {(data.locations||[]).filter((l:any)=> (l.producer||'')===(data.me?.name||'') || !l.producer).length>0 && (
+          <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+            {(data.locations||[]).filter((l:any)=> (l.producer||'')===(data.me?.name||'') || !l.producer).map((l:any)=>(
+              <span key={l.id} style={{fontSize:12,background:'var(--surface2)',border:'1px solid var(--border)',borderRadius:999,padding:'4px 10px',display:'inline-flex',gap:6,alignItems:'center'}}>
+                🏪 {l.name}{l.producer ? '' : '（共通）'}
+                {(l.producer||'')===(data.me?.name||'') && l.producer && <button onClick={()=>api('remove_location',{id:l.id})} style={{border:'none',background:'none',color:'var(--danger)',cursor:'pointer',fontSize:12}}>×</button>}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div style={s.box}>
         <h2 style={{fontSize:14,fontWeight:700,marginBottom:8}}>🌱 商品を申請</h2>
         <p style={{fontSize:11,color:'var(--muted)',marginBottom:12}}>新しい商品は申請後、組合管理者の承認で使えるようになります（承認まで納品の商品選択には出ません）。</p>

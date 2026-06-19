@@ -16,7 +16,7 @@ export default function EmailPage() {
   const [emails, setEmails] = useState<EmailResult[]>([])
   const [fetching, setFetching] = useState(false)
   const [applying, setApplying] = useState('')
-  const [locations, setLocations] = useState<string[]>([])
+  const [locations, setLocations] = useState<any[]>([])
   const [toast, setToast] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [itemsMap, setItemsMap] = useState<Record<string, ParsedItem[]>>({})
@@ -214,7 +214,7 @@ export default function EmailPage() {
                         onChange={e => setLocationMap(prev => ({ ...prev, [email.id]: e.target.value }))}
                       >
                         <option value="">道の駅を選択</option>
-                        {locations.map(l => <option key={l} value={l}>{l}</option>)}
+                        {locations.map((l: any) => <option key={l.id || l} value={l.name || l}>{l.name || l}</option>)}
                       </select>
                       <input
                         type="date"
