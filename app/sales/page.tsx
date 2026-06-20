@@ -16,6 +16,8 @@ export default function SalesPage() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => { fetch('/api/inventory').then(r => r.json()).then(setData) }, [])
+  // 生産者は自分名義のみ。生産者欄を本人に固定。
+  useEffect(() => { if (data.me?.role === '生産者' && data.me?.name) setProducer(data.me.name) }, [data.me?.role, data.me?.name])
 
   function showToast(m: string) { setToast(m); setTimeout(() => setToast(''), 3000) }
 
@@ -86,10 +88,12 @@ export default function SalesPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12, marginBottom: 20 }}>
             <div>
               <label style={s.label}>生産者（送信先）</label>
-              <select style={s.select} value={producer} onChange={e => { setProducer(e.target.value); setEntries([{ product: '', qty: '' }]) }}>
+              {data.me?.role === '生産者'
+                ? <input style={{ ...s.select, opacity: .7 }} value={producer} disabled />
+                : <select style={s.select} value={producer} onChange={e => { setProducer(e.target.value); setEntries([{ product: '', qty: '' }]) }}>
                 <option value="">選択してください</option>
                 {(data.producers || []).filter((p: any) => (p.role || '生産者') === '生産者').map((p: any) => <option key={p.id} value={p.name}>{p.name}</option>)}
-              </select>
+              </select>}
             </div>
             <div>
               <label style={s.label}>販売先（道の駅）</label>

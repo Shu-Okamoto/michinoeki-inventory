@@ -72,16 +72,20 @@ export async function GET(req: NextRequest) {
   ])
 
   const role = (session.user as any)?.role || 'guest'
+  // 生産者は自分の納品・売上のみ閲覧可
+  const myName = session.user?.name || ''
+  const shp = role === '生産者' ? (shipments as any[] || []).filter((x: any) => x.producer === myName) : (shipments || [])
+  const sls = role === '生産者' ? (sales as any[] || []).filter((x: any) => x.producer === myName) : (sales || [])
   return NextResponse.json({
     locations: normLocations(locations as any[]),
     products: products || [],
-    shipments: shipments || [],
-    sales: sales || [],
+    shipments: shp,
+    sales: sls,
     gmailSettings: gmailSettings || { labelId: '', labelName: '', autoFetch: false },
     producers: sanitizeProducers(producers as any[]),
     announcements: announcements || [],
     settings: settings || { kyohaiUrl: '' },
-    me: { name: session.user?.name || '', role, view: roleToView(role), email: session.user?.email || '' },
+    me: { name: myName, role, view: roleToView(role), email: session.user?.email || '' },
   })
 }
 
@@ -278,8 +282,10 @@ export async function POST(req: NextRequest) {
     case 'add_shipment': {
       // 納品＝生産者または管理者
       if (role === '販売者') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
-      const unitPrice = payload.unitPrice !== undefined ? Number(payload.unitPrice) || 0 : await productPrice(payload.product, payload.producer)
-      await addShipment(ORG, { id: uid(), date: payload.date, location: payload.location, producer: payload.producer || '', product: payload.product, qty: Number(payload.qty) || 0, unitPrice })
+      // 生産者は自分名義のみ登録可
+      const shpProducer = role === '生産者' ? (session.user?.name || '') : (payload.producer || '')
+      const unitPrice = payload.unitPrice !== undefined ? Number(payload.unitPrice) || 0 : await productPrice(payload.product, shpProducer)
+      await addShipment(ORG, { id: uid(), date: payload.date, location: payload.location, producer: shpProducer, product: payload.product, qty: Number(payload.qty) || 0, unitPrice })
       return NextResponse.json({ ok: true })
     }
     case 'delete_shipment': {
@@ -288,11 +294,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
     case 'add_sales': {
-      // レジ通過数＝販売者または管理者
-      if (role === '生産者') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
+      // 売上(レジ通過)＝販売者・組合・生産者(自分名義のみ)
+      if (role === 'guest') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
+      const salesProducer = role === '生産者' ? (session.user?.name || '') : (payload.producer || '')
       const priceMap = await productPriceMap()
       const recs = (payload.items || []).map((item: any) => ({
-        id: uid(), date: payload.date, location: payload.location, producer: payload.producer || '',
+        id: uid(), date: payload.date, location: payload.location, producer: salesProducer,
         product: item.product, qty: Number(item.qty) || 0, method: payload.method || '手動',
         unitPrice: item.unitPrice !== undefined ? Number(item.unitPrice) || 0 : (priceMap[item.product] || 0),
       }))
