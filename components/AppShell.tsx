@@ -34,22 +34,24 @@ const VIEW_LABEL: Record<View, string> = {
 }
 
 function groupsForView(view: View) {
-  // 機能を明確に分離: ①お知らせ ②道の駅 在庫管理(当初機能) ③産直・卸売ワークフロー ④管理
+  // 表示順: お知らせ / ワークフロー / 共配システム / 在庫管理ツール / 管理
   if (view === 'admin') return [
     { title: 'お知らせ', items: [ITEMS.news] },
-    { title: '📦 道の駅 在庫管理', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history, ITEMS.email, ITEMS.kyohai] },
     { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals, ITEMS.settlement] },
+    { title: '🚚 共配システム', items: [ITEMS.kyohai] },
+    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history, ITEMS.email] },
     { title: '⚙️ 管理', items: [ITEMS.producers, ITEMS.settings] },
   ]
   if (view === 'seller') return [
     { title: 'お知らせ', items: [ITEMS.news] },
-    { title: '📦 道の駅 在庫管理', items: [ITEMS.sales, ITEMS.history] },
     { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals] },
+    { title: '📦 在庫管理ツール', items: [ITEMS.sales, ITEMS.history] },
   ]
   if (view === 'producer') return [
     { title: 'お知らせ', items: [ITEMS.news] },
-    { title: '📦 道の駅 在庫管理', items: [ITEMS.dashboard, ITEMS.send, ITEMS.kyohai] },
     { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals] },
+    { title: '🚚 共配システム', items: [ITEMS.kyohai] },
+    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send] },
     { title: '⚙️ マスタ登録', items: [ITEMS.master] },
   ]
   return []
