@@ -44,8 +44,12 @@ export default function SettlementPage() {
 
   // 精算対象（確認済み以降・未精算）/ 精算済
   // 産直は実売分で部分決算、卸売は納品数で全額決算。
-  const SETTLE_STATUS = ['confirmed', 'sales_entered', 'completed']
-  const pending = tx.filter(t => SETTLE_STATUS.includes(t.status) && !t.invoiceId)
+  // 請求対象: 進行中(confirmed/sales_entered) ＋ 成立かつ生産者確認済(completed && producerConfirmed)
+  const pending = tx.filter(t => !t.invoiceId && (
+    ['confirmed', 'sales_entered'].includes(t.status) || (t.status === 'completed' && t.producerConfirmed)
+  ))
+  // 成立したが生産者の確認待ち（請求対象に未計上）
+  const awaitingConfirm = tx.filter(t => t.status === 'completed' && !t.producerConfirmed && !t.invoiceId)
   const settled = tx.filter(t => t.status === 'settled')
 
   const previewProducer = groupBy(pending, 'producer')
@@ -254,6 +258,15 @@ export default function SettlementPage() {
         <div style={s.stat}><div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>販売金額 合計</div><div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Space Mono,monospace' }}>{yen(pendingSales)}</div></div>
         <div style={s.stat}><div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>組合手数料 合計</div><div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Space Mono,monospace', color: 'var(--accent2)' }}>{yen(pendingCommission)}</div></div>
       </div>
+
+      {/* 生産者確認待ち */}
+      {awaitingConfirm.length > 0 && (
+        <div style={{ ...s.box, borderColor: 'var(--danger)', background: '#FBEFEE' }}>
+          <div style={{ fontSize: 13 }}>
+            ⏳ <b>{awaitingConfirm.length}件</b> が成立済みですが<b>生産者の確認待ち</b>のため請求対象に入っていません（お知らせ欄で確認されると対象になります）。組合が代行確認する場合は取引画面から確認してください。
+          </div>
+        </div>
+      )}
 
       {/* 繰越プレビュー */}
       {carryovers.length > 0 && (

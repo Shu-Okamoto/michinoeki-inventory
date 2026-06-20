@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { kvGet } from '@/lib/db'
 import { ORG } from '@/lib/users'
 import {
-  createTransaction, confirmTransaction, gradeTransaction, enterSales, addSales, completeTransaction,
+  createTransaction, confirmTransaction, gradeTransaction, enterSales, addSales, completeTransaction, confirmProducer,
   retrieveTransaction, souzaiTransaction, discountSaleTransaction, discardTransaction,
   distributeTransaction,
   cancelTransaction, patchTransaction, deleteTransaction,
@@ -181,6 +181,12 @@ export async function POST(req: NextRequest) {
       // 廃棄（無償・棚残から減算）。産直のみ
       if (role !== '販売者' && role !== ADMIN) return deny()
       await discardTransaction(ORG, payload.id, Number(payload.discardQty) || 0)
+      return NextResponse.json({ ok: true })
+    }
+    case 'producer_confirm': {
+      // 生産者が成立内容を確認 → 請求書作成の対象へ（組合も代行可）
+      if (role !== '生産者' && role !== ADMIN) return deny()
+      await confirmProducer(ORG, payload.id)
       return NextResponse.json({ ok: true })
     }
     case 'cancel': {

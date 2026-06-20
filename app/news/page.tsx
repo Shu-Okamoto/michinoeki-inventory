@@ -12,6 +12,7 @@ export default function NewsPage() {
   const [form, setForm] = useState({ date: today(), title: '', body: '', pinned: false })
   const [composing, setComposing] = useState(false)
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({})
+  const [txList, setTxList] = useState<any[]>([])
   const [toast, setToast] = useState('')
 
   useEffect(() => { refresh() }, [])
@@ -20,7 +21,15 @@ export default function NewsPage() {
       setList(d.announcements || [])
       setMe({ role: d.me?.role || '', name: d.me?.name || '' })
     })
+    fetch('/api/transactions').then(r => r.json()).then(d => setTxList(d.transactions || []))
   }
+  async function txAction(action: string, payload: any, msg?: string) {
+    await fetch('/api/transactions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, payload }) })
+    if (msg) showToast(msg)
+    refresh()
+  }
+  const yen = (n: number) => '¥' + (Number(n) || 0).toLocaleString()
+  const typeLabel = (t: string) => t === '卸売' ? '買取' : '産直委託'
   function showToast(m: string) { setToast(m); setTimeout(() => setToast(''), 2500) }
 
   async function api(action: string, payload: any) {
@@ -46,6 +55,11 @@ export default function NewsPage() {
   }
 
   const sorted = [...list].sort((a, b) => (Number(b.pinned) - Number(a.pinned)) || b.date.localeCompare(a.date))
+  // 成立した取引（completed）。未確認を先に、新しい順。
+  const completedTx = txList.filter(t => t.status === 'completed')
+    .sort((a, b) => (Number(!!a.producerConfirmed) - Number(!!b.producerConfirmed)) || (b.date || '').localeCompare(a.date || ''))
+  const needConfirm = completedTx.filter(t => !t.producerConfirmed).length
+  const canConfirm = me.role === '生産者' || me.role === '組合管理者'
 
   const s = {
     box: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', marginBottom: 24 } as any,
@@ -68,6 +82,42 @@ export default function NewsPage() {
         <h2 style={{ fontSize: 15, fontWeight: 700 }}>📢 お知らせ・情報共有</h2>
         {isAdmin && <button style={s.btnGhost} onClick={() => setComposing(!composing)}>{composing ? '× 閉じる' : '＋ 新規通達'}</button>}
       </div>
+
+      {/* 成立した取引のお知らせ */}
+      {completedTx.length > 0 && (
+        <div style={s.box}>
+          <div style={s.boxHead}>
+            <span>🎉 成立した取引のお知らせ</span>
+            {needConfirm > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', background: 'var(--danger)', borderRadius: 999, padding: '2px 9px' }}>要確認 {needConfirm}件</span>}
+          </div>
+          <div style={s.boxBody}>
+            {completedTx.map(t => {
+              const u = t.unit || ''
+              const qty = t.type === '卸売' ? ((t.gradeAQty || 0) + (t.gradeBQty || 0)) : ((t.salesQty || 0) + (t.discountQty || 0) + (t.souzaiQty || 0))
+              const amount = t.producerAmount != null ? t.producerAmount : t.sellerAmount
+              const amountLabel = t.producerAmount != null ? '受取額' : 'ご請求額'
+              return (
+                <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                  <span style={{ fontFamily: 'Space Mono,monospace', fontSize: 11, color: 'var(--muted)' }}>{t.date}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: t.type === '卸売' ? '#E7DCF4' : '#DCEFD2', color: t.type === '卸売' ? '#5B3B86' : '#2E6B17' }}>{typeLabel(t.type)}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700 }}>{t.product}</span>
+                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>{qty}{u}</span>
+                  {amount != null && <span style={{ fontSize: 12 }}>{amountLabel}: <b style={{ fontFamily: 'Space Mono,monospace' }}>{yen(amount)}</b></span>}
+                  {t.seller && <span style={{ fontSize: 12, color: 'var(--muted)' }}>販売先: {t.seller}</span>}
+                  <span style={{ marginLeft: 'auto' }}>
+                    {t.producerConfirmed
+                      ? <span style={{ fontSize: 12, color: 'var(--accent)' }}>✅ 確認済（請求書作成待ち）</span>
+                      : canConfirm
+                        ? <button style={s.btn} onClick={() => txAction('producer_confirm', { id: t.id }, '✅ 確認しました（請求書作成へ）')}>内容を確認する</button>
+                        : <span style={{ fontSize: 12, color: 'var(--warn)' }}>生産者の確認待ち</span>}
+                  </span>
+                </div>
+              )
+            })}
+            <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10 }}>「内容を確認する」を押すと、その取引は請求書作成の対象になります。</p>
+          </div>
+        </div>
+      )}
 
       {isAdmin && composing && (
         <div style={s.box}>
