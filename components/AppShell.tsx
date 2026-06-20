@@ -51,7 +51,7 @@ function groupsForView(view: View) {
     { title: 'お知らせ', items: [ITEMS.news] },
     { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals] },
     { title: '🚚 共配システム', items: [ITEMS.kyohai] },
-    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send] },
+    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history] },
     { title: '⚙️ マスタ登録', items: [ITEMS.master] },
   ]
   return []
