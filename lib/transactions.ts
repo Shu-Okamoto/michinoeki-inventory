@@ -33,6 +33,8 @@ export interface Transaction {
   gradeBQty: number          // 買取: B品数
   gradeBPrice: number        // 買取: B品単価（割引単価）
   confirmedQty: number       // 買取: 納品確認数（組合が確認した受領総数）
+  producerConfirmed: boolean // 成立後、生産者が内容を確認したか（請求書作成の前提）
+  producerConfirmedAt?: string
   discountUnitPrice: number  // 割引販売の単価（円・半額〜定価の範囲）
   unit: string               // 単位（袋/本/KG など・商品マスタからスナップショット）
   lastSalesDate?: string     // 直近に売上登録した日（YYYY-MM-DD）
@@ -153,6 +155,8 @@ function initTxTables(): Promise<void> {
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS grade_b_qty INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS grade_b_price INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS confirmed_qty INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS producer_confirmed BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS producer_confirmed_at TEXT;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS unit TEXT;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS last_sales_date TEXT;
         CREATE TABLE IF NOT EXISTS iwkagri_invoices (
@@ -198,6 +202,8 @@ function rowToTx(r: any): Transaction {
     gradeBQty: Number(r.grade_b_qty) || 0,
     gradeBPrice: Number(r.grade_b_price) || 0,
     confirmedQty: Number(r.confirmed_qty) || 0,
+    producerConfirmed: r.producer_confirmed === true,
+    producerConfirmedAt: r.producer_confirmed_at || undefined,
     discountUnitPrice: Number(r.discount_unit_price) || 0,
     unit: r.unit || '',
     lastSalesDate: r.last_sales_date || undefined,
@@ -445,6 +451,19 @@ export async function discountSaleTransaction(org: string, id: string, discountQ
   return setChannelQty(org, id, 'discount_qty', discountQty, { discountUnitPrice })
 }
 
+// 生産者（または組合）が成立内容を確認 → 請求書作成の対象になる
+export async function confirmProducer(org: string, id: string, date?: string): Promise<void> {
+  await initTxTables()
+  await withRetry(async () => {
+    const sql = getSql()
+    await sql`
+      UPDATE iwkagri_transactions
+      SET producer_confirmed = true, producer_confirmed_at = ${date || new Date().toISOString().slice(0, 10)}, updated_at = NOW()
+      WHERE org = ${org} AND id = ${id} AND status NOT IN ('settled','canceled')
+    `
+  })
+}
+
 export async function cancelTransaction(org: string, id: string): Promise<void> {
   await initTxTables()
   await withRetry(async () => {
@@ -534,7 +553,8 @@ export async function generateInvoices(org: string, period: string): Promise<{ p
     const rows = await sql`
       SELECT * FROM iwkagri_transactions
       WHERE org = ${org} AND invoice_id IS NULL AND date LIKE ${period + '%'}
-        AND status IN ('confirmed','sales_entered','completed')
+        AND ( status IN ('confirmed','sales_entered')
+              OR (status = 'completed' AND producer_confirmed = true) )
     `
     const txs = rows.map(rowToTx)
     if (txs.length === 0) return { producer: [], seller: [], count: 0, carried: 0 }
