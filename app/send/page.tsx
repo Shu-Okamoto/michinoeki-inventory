@@ -12,6 +12,8 @@ export default function SendPage() {
   const [toast, setToast] = useState('')
 
   useEffect(() => { fetch('/api/inventory').then(r=>r.json()).then(setData) }, [])
+  // 生産者は自分名義のみ。生産者欄を本人に固定。
+  useEffect(() => { if (data.me?.role === '生産者' && data.me?.name) setProducer(data.me.name) }, [data.me?.role, data.me?.name])
 
   async function api(action: string, payload: any) {
     await fetch('/api/inventory', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action,payload}) })
@@ -41,7 +43,9 @@ export default function SendPage() {
         <h2 style={{fontSize:14,fontWeight:700,marginBottom:16}}>納品数入力</h2>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:16}}>
           {[
-            ['組合員（生産者）', <select style={s.input} value={producer} onChange={e=>setProducer(e.target.value)}>
+            ['組合員（生産者）', data.me?.role==='生産者'
+              ? <input style={{...s.input,opacity:.7}} value={producer} disabled />
+              : <select style={s.input} value={producer} onChange={e=>setProducer(e.target.value)}>
               <option value="">選択</option>{(data.producers||[]).filter((p:any)=>(p.role||'生産者')==='生産者').map((p:any)=><option key={p.id} value={p.name}>{p.name}</option>)}</select>],
             ['納品先（道の駅）', <select style={s.input} value={loc} onChange={e=>setLoc(e.target.value)}>
               <option value="">選択</option>{(data.locations||[]).filter((l:any)=>!l.producer || !producer || l.producer===producer).map((l:any)=><option key={l.id} value={l.name}>{l.name}</option>)}</select>],
