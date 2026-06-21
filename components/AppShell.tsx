@@ -86,7 +86,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             ? <img src="/logo.png" alt="いわくにアグリパートナーズ" className={styles.logoImg} onError={() => setLogoOk(false)} />
             : <div className={styles.logoIcon}>🌾</div>}
           <div>
-            <div className={styles.logoText}>いわくにアグリパートナーズ 産直ポータル</div>
+            <div className={styles.logoText}>いわくにアグリパートナーズ 組合ポータル</div>
             <div className={styles.logoSub}>IWAKUNI AGRI PARTNERS</div>
           </div>
         </div>
