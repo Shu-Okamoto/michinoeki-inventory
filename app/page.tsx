@@ -54,7 +54,7 @@ export default function Home() {
             }}>🌾</div>}
         <h1 style={{ fontSize:26, fontWeight:700, marginBottom:8 }}>いわくにアグリパートナーズ</h1>
         <p style={{ color:'var(--muted)', fontSize:14, lineHeight:1.7 }}>
-          産直ポータル<br />生産者・販売会社・組合をつなぐ納品管理
+          組合ポータル<br />生産者・販売会社・組合をつなぐ納品管理
         </p>
       </div>
 
