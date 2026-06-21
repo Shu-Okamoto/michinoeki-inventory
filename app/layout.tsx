@@ -3,8 +3,8 @@ import './globals.css'
 import { Providers } from './providers'
 
 export const metadata: Metadata = {
-  title: '道の駅 在庫管理システム',
-  description: 'Gmail連携による自動在庫管理',
+  title: 'いわくにアグリパートナーズ組合ポータル',
+  description: '産直・卸売ワークフローと道の駅在庫管理',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
