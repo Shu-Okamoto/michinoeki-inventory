@@ -325,6 +325,10 @@ export default function DealsPage() {
 
                 {/* 買取(卸売): 組合の検品（納品数・納品確認数・A品/B品 等級別単価・不良品） */}
                 {isAdmin && t.type === '卸売' && (t.status === 'shipped' || t.status === 'confirmed') && (() => {
+                  const gDelivery = Number(dv(t, 'gDelivery', t.deliveryQty || t.shipQty || 0)) || 0
+                  const gConfirmed = Number(dv(t, 'confirmedQty', t.confirmedQty || t.deliveryQty || t.shipQty || 0)) || 0
+                  const gTotal = (Number(dv(t, 'aQty', t.gradeAQty || 0)) || 0) + (Number(dv(t, 'bQty', t.gradeBQty || 0)) || 0) + (Number(dv(t, 'discardQty', t.discardQty || 0)) || 0)
+                  const over = gDelivery > 0 && (gTotal > gDelivery || gConfirmed > gDelivery)
                   const gradePayload = () => ({
                     id: t.id,
                     deliveryQty: Number(dv(t, 'gDelivery', t.deliveryQty || t.shipQty || 0)),
@@ -346,8 +350,12 @@ export default function DealsPage() {
                       <div><label style={s.miniLabel}>B単価(割引・円)</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'bPrice', t.gradeBPrice || 0)} onChange={e => setDraft(t.id, 'bPrice', e.target.value)} /></div>
                       <div><label style={s.miniLabel}>不良品数</label><input style={s.miniInput} type="number" min="0" value={dv(t, 'discardQty', t.discardQty || 0)} onChange={e => setDraft(t.id, 'discardQty', e.target.value)} /></div>
                       <div><label style={s.miniLabel}>手数料率(%)</label><input style={s.miniInput} type="number" step="0.1" value={dv(t, 'commissionRate', t.commissionRate)} onChange={e => setDraft(t.id, 'commissionRate', e.target.value)} /></div>
-                      <button style={s.btn2} onClick={() => action('grade', gradePayload(), '✅ 検品を途中保存しました')}>途中保存</button>
-                      <button style={s.btn} onClick={() => action('grade', { ...gradePayload(), complete: true }, '🎉 検品確定（成立・精算待ちへ）')}>検品確定（成立）</button>
+                      <button style={{ ...s.btn2, opacity: over ? 0.5 : 1, cursor: over ? 'not-allowed' : 'pointer' }} disabled={over} onClick={() => action('grade', gradePayload(), '✅ 検品を途中保存しました')}>途中保存</button>
+                      <button style={{ ...s.btn, opacity: over ? 0.5 : 1, cursor: over ? 'not-allowed' : 'pointer' }} disabled={over} onClick={() => action('grade', { ...gradePayload(), complete: true }, '🎉 検品確定（成立・精算待ちへ）')}>検品確定（成立）</button>
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 11, color: over ? 'var(--danger)' : 'var(--muted)' }}>
+                      検品計（A品＋B品＋不良品）<b>{gTotal}{u}</b> ／ 納品数 <b>{gDelivery}{u}</b>
+                      {over && <span style={{ fontWeight: 700 }}>　⚠️ 納品数を超えています（A品＋B品＋不良品・納品確認数は納品数以内にしてください）</span>}
                     </div>
                   </div>
                   )

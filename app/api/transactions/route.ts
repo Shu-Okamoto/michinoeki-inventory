@@ -7,7 +7,7 @@ import {
   createTransaction, confirmTransaction, gradeTransaction, enterSales, addSales, completeTransaction, confirmProducer,
   retrieveTransaction, souzaiTransaction, discountSaleTransaction, discardTransaction,
   distributeTransaction,
-  cancelTransaction, patchTransaction, deleteTransaction,
+  cancelTransaction, patchTransaction, deleteTransaction, getTransaction,
   listTransactions, generateInvoices, listInvoices, TxStatus,
 } from '@/lib/transactions'
 
@@ -119,10 +119,21 @@ export async function POST(req: NextRequest) {
     case 'grade': {
       // 買取の検品（組合）：A品/B品(等級別単価)・廃棄数を入力
       if (role !== ADMIN) return deny()
+      const aQty = Number(payload.aQty) || 0, bQty = Number(payload.bQty) || 0, discardQty = Number(payload.discardQty) || 0
+      const confirmedQty = payload.confirmedQty != null ? Number(payload.confirmedQty) : 0
+      // 納品数（今回の入力値があればそれ、なければ既存値）を上限に検証
+      let dq = payload.deliveryQty != null ? Number(payload.deliveryQty) : NaN
+      if (!Number.isFinite(dq)) { const cur = await getTransaction(ORG, payload.id); dq = cur?.deliveryQty || 0 }
+      if (dq > 0 && confirmedQty > dq) {
+        return NextResponse.json({ error: `納品確認数(${confirmedQty})が納品数(${dq})を超えています` }, { status: 400 })
+      }
+      if (dq > 0 && (aQty + bQty + discardQty) > dq) {
+        return NextResponse.json({ error: `検品数 A品+B品+不良品(${aQty + bQty + discardQty})が納品数(${dq})を超えています` }, { status: 400 })
+      }
       await gradeTransaction(ORG, payload.id, {
-        aQty: Number(payload.aQty) || 0, aPrice: Number(payload.aPrice) || 0,
-        bQty: Number(payload.bQty) || 0, bPrice: Number(payload.bPrice) || 0,
-        discardQty: Number(payload.discardQty) || 0,
+        aQty, aPrice: Number(payload.aPrice) || 0,
+        bQty, bPrice: Number(payload.bPrice) || 0,
+        discardQty,
         confirmedQty: payload.confirmedQty != null ? Number(payload.confirmedQty) : undefined,
         deliveryQty: payload.deliveryQty != null ? Number(payload.deliveryQty) : undefined,
         commissionRate: payload.commissionRate != null ? Number(payload.commissionRate) : undefined,
