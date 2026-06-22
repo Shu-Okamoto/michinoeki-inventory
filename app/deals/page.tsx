@@ -47,7 +47,7 @@ export default function DealsPage() {
   const [drafts, setDrafts] = useState<Record<string, any>>({})
 
   // 出荷登録フォーム
-  const [type, setType] = useState('産直')
+  const [type, setType] = useState('卸売')
   const [producer, setProducer] = useState('')
   const [seller, setSeller] = useState('')
   const [loc, setLoc] = useState('')
@@ -166,7 +166,7 @@ export default function DealsPage() {
             </div>
             <div>
               <label style={s.label}>{type === '卸売' ? '納品数' : '出荷数'}</label>
-              <input style={s.input} type="number" min="1" value={qty} onChange={e => setQty(e.target.value)} placeholder="20" />
+              <input style={s.input} type="number" min="0" step="0.1" value={qty} onChange={e => setQty(e.target.value)} placeholder="20" />
             </div>
             <div>
               <label style={s.label}>取引日</label>
