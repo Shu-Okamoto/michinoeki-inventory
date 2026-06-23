@@ -93,18 +93,15 @@ export default function DealsPage() {
   function setDraft(id: string, k: string, v: any) { setDrafts(d => ({ ...d, [id]: { ...d[id], [k]: v } })) }
   function dv(t: any, k: string, fallback: any) { const d = drafts[t.id] || {}; return d[k] !== undefined ? d[k] : fallback }
 
-  // admin: 全ユーザー選択可。組合パートナー: 生産者+組合パートナー。
+  // admin・組合パートナー共通: 生産者+組合パートナー。生産者: 自分のみ（選択不可）。
   const producerOpts = (master.producers || []).filter((p: any) => {
     if (p.disabled) return false
-    if (isSuperAdmin) return true
     return (p.role || '生産者') === '生産者' || p.role === '組合パートナー' || p.role === '組合管理者'
   })
-  // 組合パートナー: 販売者+組合パートナー（自分含む）。admin: 販売者のみ。
+  // admin・組合パートナー共通: 販売者+組合パートナー。
   const sellerOpts = (master.producers || []).filter((p: any) => {
     if (p.disabled) return false
-    if (p.role === '販売者') return true
-    if (isAdmin && (p.role === '組合パートナー' || p.role === '組合管理者')) return true
-    return false
+    return p.role === '販売者' || p.role === '組合パートナー' || p.role === '組合管理者'
   })
 
   const counts: Record<string, number> = { all: tx.length, active: tx.filter(t => ACTIVE.includes(t.status)).length }
