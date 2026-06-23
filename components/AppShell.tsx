@@ -20,17 +20,18 @@ const ITEMS = {
   settings:  { href: '/settings',  label: '⚙️ 設定' },
 }
 
-type View = 'admin' | 'seller' | 'producer' | 'guest'
+type View = 'admin' | 'partner' | 'seller' | 'producer' | 'guest'
 
 function roleToView(role?: string): View {
-  if (role === '組合管理者') return 'admin'
+  if (role === 'admin') return 'admin'
+  if (role === '組合パートナー' || role === '組合管理者') return 'partner'
   if (role === '販売者') return 'seller'
   if (role === '生産者') return 'producer'
   return 'guest'
 }
 
 const VIEW_LABEL: Record<View, string> = {
-  admin: '全体ビュー', seller: '販売会社ビュー', producer: '生産者ビュー', guest: '—',
+  admin: '管理者ビュー', partner: '組合パートナービュー', seller: '販売会社ビュー', producer: '生産者ビュー', guest: '—',
 }
 
 function groupsForView(view: View) {
@@ -41,6 +42,13 @@ function groupsForView(view: View) {
     { title: '🚚 共配システム', items: [ITEMS.kyohai] },
     { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history, ITEMS.email] },
     { title: '⚙️ 管理', items: [ITEMS.producers, ITEMS.settings] },
+  ]
+  if (view === 'partner') return [
+    { title: 'お知らせ', items: [ITEMS.news] },
+    { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals] },
+    { title: '🚚 共配システム', items: [ITEMS.kyohai] },
+    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history, ITEMS.email] },
+    { title: '⚙️ マスタ登録', items: [ITEMS.master] },
   ]
   if (view === 'seller') return [
     { title: 'お知らせ', items: [ITEMS.news] },

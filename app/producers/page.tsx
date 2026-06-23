@@ -3,7 +3,7 @@ import AppShell from '@/components/AppShell'
 import { useEffect, useState } from 'react'
 
 interface Producer { id: string; name: string; role: string; company: string; email: string; phone: string; note: string; loginId?: string; hasLogin?: boolean }
-const ROLES = ['生産者', '販売者', '組合管理者']
+const ROLES = ['生産者', '販売者', '組合パートナー']
 const emptyForm = { name: '', role: '生産者', company: '', email: '', phone: '', note: '', loginId: '', password: '' }
 
 export default function ProducersPage() {
@@ -57,7 +57,7 @@ export default function ProducersPage() {
   return (
     <AppShell>
       <div style={s.box}>
-        <div style={s.boxHead}>{editing ? '✏️ ユーザーを編集' : '👤 ユーザー（生産者・販売者・組合管理者）を登録'}</div>
+        <div style={s.boxHead}>{editing ? '✏️ ユーザーを編集' : '👤 ユーザー（生産者・販売者・組合パートナー）を登録'}</div>
         <div style={s.boxBody}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 12, marginBottom: 16 }}>
             <div><label style={s.label}>氏名・名称 *</label><input style={s.input} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="例: 山田 太郎 / 道の駅みかわ" /></div>
@@ -94,7 +94,7 @@ export default function ProducersPage() {
           <tbody>
             {list.filter(p => !filterRole || (p.role || '生産者') === filterRole).map(p => {
               const role = p.role || '生産者'
-              const rc = role === '生産者' ? 'var(--accent)' : role === '販売者' ? 'var(--accent2)' : 'var(--warn)'
+              const rc = role === '生産者' ? 'var(--accent)' : role === '販売者' ? 'var(--accent2)' : role === 'admin' ? '#e55' : 'var(--warn)'
               return (
               <tr key={p.id}>
                 <td style={{ ...s.td, fontWeight: 600 }}>{p.name}</td>

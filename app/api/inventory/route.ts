@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { kvGet, kvSet } from '@/lib/db'
 import { listSales, addSales, deleteSale, clearSales, listShipments, addShipment, deleteShipment } from '@/lib/records'
-import { ORG, hashPassword, roleToView } from '@/lib/users'
+import { ORG, hashPassword, roleToView, isAdminRole, isPartnerRole, hasOperationalAccess } from '@/lib/users'
 import { sendSalesDigest } from '@/lib/salesmail'
 
 // コールドスタート時のDB起動待ちで504にならないよう関数の上限時間を延長
@@ -106,14 +106,14 @@ export async function POST(req: NextRequest) {
   const body = await req.json()
   const { action, payload } = body
 
-  if (ADMIN_ACTIONS.has(action) && role !== '組合管理者') {
+  if (ADMIN_ACTIONS.has(action) && !isAdminRole(role)) {
     return NextResponse.json({ error: '権限がありません' }, { status: 403 })
   }
 
   switch (action) {
     case 'add_location': {
       // 道の駅の登録。生産者は自分の道の駅、組合は共通(ワークフローでも使用)。
-      if (role !== '生産者' && role !== '組合管理者') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
+      if (role !== '生産者' && !hasOperationalAccess(role)) return NextResponse.json({ error: '権限がありません' }, { status: 403 })
       if (!payload.name) return NextResponse.json({ error: '名称が必要です' }, { status: 400 })
       const list = normLocations(await kvGet(ORG, 'locations') || [])
       const producer = role === '生産者' ? (session.user?.name || '') : (payload.producer || '')
@@ -124,14 +124,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
     case 'remove_location': {
-      if (role !== '生産者' && role !== '組合管理者') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
+      if (role !== '生産者' && !hasOperationalAccess(role)) return NextResponse.json({ error: '権限がありません' }, { status: 403 })
       const me = session.user?.name || ''
       const list = normLocations(await kvGet(ORG, 'locations') || [])
       const filtered = list.filter((l: any) => {
         const hit = payload.id ? l.id === payload.id : l.name === payload.name
         if (!hit) return true
         // 生産者は自分の道の駅のみ削除可
-        if (role !== '組合管理者' && (l.producer || '') !== me) return true
+        if (!hasOperationalAccess(role) && (l.producer || '') !== me) return true
         return false
       })
       await kvSet(ORG, 'locations', filtered)
@@ -193,7 +193,7 @@ export async function POST(req: NextRequest) {
       await kvSet(ORG, 'announcements', list.map((a: any) => {
         if (a.id !== payload.announcementId) return a
         const replies = (a.replies || []).filter((r: any) =>
-          r.id !== payload.replyId || (role !== '組合管理者' && r.author !== author))
+          r.id !== payload.replyId || (!hasOperationalAccess(role) && r.author !== author))
         return { ...a, replies }
       }))
       return NextResponse.json({ ok: true })
@@ -229,8 +229,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
     case 'propose_product': {
-      // 生産者（または組合管理者）が商品を申請。生産者の申請は「承認待ち」
-      if (role !== '生産者' && role !== '組合管理者') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
+      // 生産者 / 組合パートナー / admin が商品を申請。生産者の申請は「承認待ち」
+      if (role !== '生産者' && !hasOperationalAccess(role)) return NextResponse.json({ error: '権限がありません' }, { status: 403 })
       if (!payload.name) return NextResponse.json({ error: '商品名が必要です' }, { status: 400 })
       const list: any[] = await kvGet(ORG, 'products') || []
       // 生産者の申請は自分を生産者に。組合は指定可。
@@ -239,7 +239,7 @@ export async function POST(req: NextRequest) {
       if (list.find((p: any) => p.name === payload.name && (p.producer || '') === producer)) {
         return NextResponse.json({ error: 'この生産者の同名商品が既にあります' }, { status: 400 })
       }
-      const status = role === '組合管理者' ? 'approved' : 'pending'
+      const status = hasOperationalAccess(role) ? 'approved' : 'pending'
       list.push({
         id: uid(),
         name: payload.name,

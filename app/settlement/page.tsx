@@ -25,7 +25,7 @@ function groupBy(tx: any[], key: 'producer' | 'seller'): Grp[] {
 
 export default function SettlementPage() {
   const { data: session } = useSession()
-  const isAdmin = (session?.user as any)?.role === '組合管理者'
+  const isAdmin = (session?.user as any)?.role === 'admin'
 
   const [period, setPeriod] = useState(thisMonth())
   const [tx, setTx] = useState<any[]>([])
@@ -208,7 +208,7 @@ export default function SettlementPage() {
   }
 
   if (!isAdmin) {
-    return <AppShell><div style={{ ...s.box, textAlign: 'center', color: 'var(--muted)', padding: 40 }}>🔒 月末締め・請求書は組合管理者のみ利用できます。</div></AppShell>
+    return <AppShell><div style={{ ...s.box, textAlign: 'center', color: 'var(--muted)', padding: 40 }}>🔒 月末締め・請求書はadminのみ利用できます。</div></AppShell>
   }
 
   const table = (title: string, groups: Grp[], showCommission: boolean, totalKind: 'producer' | 'seller') => (

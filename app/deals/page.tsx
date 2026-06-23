@@ -35,9 +35,10 @@ export default function DealsPage() {
   const { data: session } = useSession()
   const role = (session?.user as any)?.role as string | undefined
   const myName = session?.user?.name || ''
-  const isAdmin = role === '組合管理者'
-  const isProducer = role === '生産者'
-  const isSeller = role === '販売者'
+  const isSuperAdmin = role === 'admin'
+  const isAdmin = role === 'admin' || role === '組合パートナー' || role === '組合管理者'
+  const isProducer = role === '生産者' || isAdmin
+  const isSeller = role === '販売者' || isAdmin
   const canCreate = isAdmin || isProducer
 
   const [tx, setTx] = useState<any[]>([])
@@ -416,7 +417,7 @@ export default function DealsPage() {
                 {isAdmin && t.status !== 'settled' && t.status !== 'canceled' && (
                   <button style={s.btnDanger} onClick={() => action('cancel', { id: t.id }, '取消しました')}>取消</button>
                 )}
-                {isAdmin && (t.status === 'canceled' || t.status === 'shipped') && (
+                {isSuperAdmin && (t.status === 'canceled' || t.status === 'shipped') && (
                   <button style={s.btnDanger} onClick={() => { if (confirm('この取引を完全に削除します。よろしいですか？')) action('delete', { id: t.id }, '削除しました') }}>削除</button>
                 )}
               </div>
