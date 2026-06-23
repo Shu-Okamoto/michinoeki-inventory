@@ -2,7 +2,7 @@
 import AppShell from '@/components/AppShell'
 import { useEffect, useState } from 'react'
 
-interface Producer { id: string; name: string; role: string; company: string; email: string; phone: string; note: string; loginId?: string; hasLogin?: boolean }
+interface Producer { id: string; name: string; role: string; disabled?: boolean; company: string; email: string; phone: string; note: string; loginId?: string; hasLogin?: boolean }
 const ROLES = ['生産者', '販売者', '組合パートナー']
 const emptyForm = { name: '', role: '生産者', company: '', email: '', phone: '', note: '', loginId: '', password: '' }
 
@@ -11,6 +11,7 @@ export default function ProducersPage() {
   const [form, setForm] = useState({ ...emptyForm })
   const [editing, setEditing] = useState<string | null>(null)
   const [filterRole, setFilterRole] = useState('')
+  const [filterDisabled, setFilterDisabled] = useState<boolean | null>(false)
   const [toast, setToast] = useState('')
 
   useEffect(() => { refresh() }, [])
@@ -38,6 +39,11 @@ export default function ProducersPage() {
     setEditing(p.id); setForm({ name: p.name, role: p.role || '生産者', company: p.company || '', email: p.email, phone: p.phone, note: p.note, loginId: p.loginId || '', password: '' })
   }
 
+  async function toggleDisabled(p: Producer) {
+    await api('update_producer', { id: p.id, disabled: !p.disabled })
+    showToast(p.disabled ? '✅ 有効化しました' : '⏸ 休止にしました')
+  }
+
   const s = {
     box: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', marginBottom: 24 } as any,
     boxHead: { padding: '12px 16px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', fontSize: 13, fontWeight: 600 },
@@ -49,10 +55,20 @@ export default function ProducersPage() {
     th: { padding: '10px 14px', textAlign: 'left' as const, fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase' as const, color: 'var(--muted)' },
     td: { padding: '10px 14px', borderTop: '1px solid var(--border)', fontSize: 13 },
     delBtn: { background: '#FBE0DE', color: 'var(--danger)', border: '1px solid var(--danger)', borderRadius: 6, padding: '3px 10px', fontSize: 11, cursor: 'pointer' },
+    pauseBtn: { background: '#FFF8E1', color: '#B8860B', border: '1px solid #B8860B', borderRadius: 6, padding: '3px 10px', fontSize: 11, cursor: 'pointer', marginRight: 6 },
+    resumeBtn: { background: '#E8F5E9', color: '#2E7D32', border: '1px solid #2E7D32', borderRadius: 6, padding: '3px 10px', fontSize: 11, cursor: 'pointer', marginRight: 6 },
     editBtn: { background: 'var(--surface2)', color: 'var(--accent2)', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', fontSize: 11, cursor: 'pointer', marginRight: 6 },
     filterOn: { background: 'var(--accent)', color: '#0f1117', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' },
     filterOff: { background: 'var(--surface2)', color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 14px', fontSize: 12, cursor: 'pointer' },
+    filterWarn: { background: '#B8860B', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' },
   }
+
+  const filtered = list.filter(p => {
+    if (filterRole && (p.role || '生産者') !== filterRole) return false
+    if (filterDisabled === false && p.disabled) return false
+    if (filterDisabled === true && !p.disabled) return false
+    return true
+  })
 
   return (
     <AppShell>
@@ -81,23 +97,31 @@ export default function ProducersPage() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <button style={filterRole === '' ? s.filterOn : s.filterOff} onClick={() => setFilterRole('')}>すべて</button>
-        {ROLES.map(r => <button key={r} style={filterRole === r ? s.filterOn : s.filterOff} onClick={() => setFilterRole(r)}>{r}</button>)}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        <button style={filterRole === '' && filterDisabled === false ? s.filterOn : s.filterOff} onClick={() => { setFilterRole(''); setFilterDisabled(false) }}>有効ユーザー</button>
+        {ROLES.map(r => <button key={r} style={filterRole === r && filterDisabled === false ? s.filterOn : s.filterOff} onClick={() => { setFilterRole(r); setFilterDisabled(false) }}>{r}</button>)}
+        <button style={filterDisabled === true ? s.filterWarn : s.filterOff} onClick={() => { setFilterRole(''); setFilterDisabled(true) }}>⏸ 休止中</button>
+        <button style={filterDisabled === null ? s.filterOff : s.filterOff} onClick={() => { setFilterRole(''); setFilterDisabled(null) }}>すべて</button>
       </div>
 
       <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead><tr style={{ background: 'var(--surface2)' }}>
-            {['氏名・名称', '区分', '所属・販売先', 'ログイン', 'メール', '電話', ''].map(h => <th key={h} style={s.th}>{h}</th>)}
+            {['氏名・名称', '状態', '区分', '所属・販売先', 'ログイン', 'メール', '電話', ''].map(h => <th key={h} style={s.th}>{h}</th>)}
           </tr></thead>
           <tbody>
-            {list.filter(p => !filterRole || (p.role || '生産者') === filterRole).map(p => {
+            {filtered.map(p => {
               const role = p.role || '生産者'
               const rc = role === '生産者' ? 'var(--accent)' : role === '販売者' ? 'var(--accent2)' : role === 'admin' ? '#e55' : 'var(--warn)'
               return (
-              <tr key={p.id}>
+              <tr key={p.id} style={p.disabled ? { opacity: 0.5 } : undefined}>
                 <td style={{ ...s.td, fontWeight: 600 }}>{p.name}</td>
+                <td style={s.td}>
+                  {p.disabled
+                    ? <span style={{ background: '#FFF8E1', color: '#B8860B', border: '1px solid #B8860B', padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>休止</span>
+                    : <span style={{ background: '#E8F5E9', color: '#2E7D32', border: '1px solid #2E7D32', padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>有効</span>
+                  }
+                </td>
                 <td style={s.td}><span style={{ background: 'var(--surface2)', color: rc, border: `1px solid ${rc}`, padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{role}</span></td>
                 <td style={{ ...s.td, color: 'var(--muted)' }}>{p.company || '—'}</td>
                 <td style={s.td}>{p.hasLogin
@@ -107,11 +131,14 @@ export default function ProducersPage() {
                 <td style={{ ...s.td, color: 'var(--muted)' }}>{p.phone || '—'}</td>
                 <td style={{ ...s.td, whiteSpace: 'nowrap' }}>
                   <button style={s.editBtn} onClick={() => startEdit(p)}>編集</button>
+                  <button style={p.disabled ? s.resumeBtn : s.pauseBtn} onClick={() => toggleDisabled(p)}>
+                    {p.disabled ? '▶ 有効化' : '⏸ 休止'}
+                  </button>
                   <button style={s.delBtn} onClick={() => { if (confirm(`「${p.name}」を削除しますか？`)) api('remove_producer', { id: p.id }) }}>削除</button>
                 </td>
               </tr>
             )})}
-            {list.length === 0 && <tr><td colSpan={7} style={{ ...s.td, textAlign: 'center', color: 'var(--muted)', padding: 32 }}>まだユーザーが登録されていません</td></tr>}
+            {filtered.length === 0 && <tr><td colSpan={8} style={{ ...s.td, textAlign: 'center', color: 'var(--muted)', padding: 32 }}>該当するユーザーがいません</td></tr>}
           </tbody>
         </table>
       </div>
