@@ -64,7 +64,7 @@ export default function SettingsPage() {
             <input style={s.input} value={newLoc} onChange={e=>setNewLoc(e.target.value)} placeholder="道の駅名（例: 道の駅 富士川楽座）" />
             <select style={{...s.input,maxWidth:200}} value={newLocProducer} onChange={e=>setNewLocProducer(e.target.value)}>
               <option value="">共通（ワークフローでも使用）</option>
-              {(data.producers||[]).filter((x:any)=>(x.role||'生産者')==='生産者').map((x:any)=><option key={x.id} value={x.name}>{x.name} 専用</option>)}
+              {(data.producers||[]).filter((x:any)=>(x.role||'生産者')==='生産者'&&!x.disabled).map((x:any)=><option key={x.id} value={x.name}>{x.name} 専用</option>)}
             </select>
             <button style={s.btn} onClick={async()=>{if(!newLoc)return;await api('add_location',{name:newLoc,producer:newLocProducer});setNewLoc('');setNewLocProducer('');showToast('✅ 追加しました')}}>＋ 追加</button>
           </div>
@@ -116,7 +116,7 @@ export default function SettingsPage() {
                   onChange={e=>setProducerEdits({...producerEdits,[pk]:e.target.value})}
                 >
                   <option value="">生産者なし</option>
-                  {(data.producers||[]).filter((x:any)=>(x.role||'生産者')==='生産者').map((x:any)=><option key={x.id} value={x.name}>{x.name}</option>)}
+                  {(data.producers||[]).filter((x:any)=>(x.role||'生産者')==='生産者'&&!x.disabled).map((x:any)=><option key={x.id} value={x.name}>{x.name}</option>)}
                 </select>
                 <input
                   style={{...s.input,maxWidth:80,flex:'none',padding:'5px 8px'}} list="unit-list"

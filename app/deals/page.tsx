@@ -93,8 +93,8 @@ export default function DealsPage() {
   function setDraft(id: string, k: string, v: any) { setDrafts(d => ({ ...d, [id]: { ...d[id], [k]: v } })) }
   function dv(t: any, k: string, fallback: any) { const d = drafts[t.id] || {}; return d[k] !== undefined ? d[k] : fallback }
 
-  const producerOpts = (master.producers || []).filter((p: any) => (p.role || '生産者') === '生産者')
-  const sellerOpts = (master.producers || []).filter((p: any) => p.role === '販売者')
+  const producerOpts = (master.producers || []).filter((p: any) => (p.role || '生産者') === '生産者' && !p.disabled)
+  const sellerOpts = (master.producers || []).filter((p: any) => p.role === '販売者' && !p.disabled)
 
   const counts: Record<string, number> = { all: tx.length, active: tx.filter(t => ACTIVE.includes(t.status)).length }
   Object.keys(STATUS_META).forEach(k => { counts[k] = tx.filter(t => t.status === k).length })
