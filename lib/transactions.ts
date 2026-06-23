@@ -159,6 +159,11 @@ function initTxTables(): Promise<void> {
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS producer_confirmed_at TEXT;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS unit TEXT;
         ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS last_sales_date TEXT;
+        ALTER TABLE iwkagri_transactions ALTER COLUMN ship_qty TYPE NUMERIC USING ship_qty::NUMERIC;
+        ALTER TABLE iwkagri_transactions ALTER COLUMN delivery_qty TYPE NUMERIC USING delivery_qty::NUMERIC;
+        ALTER TABLE iwkagri_transactions ALTER COLUMN confirmed_qty TYPE NUMERIC USING confirmed_qty::NUMERIC;
+        ALTER TABLE iwkagri_transactions ALTER COLUMN grade_a_qty TYPE NUMERIC USING grade_a_qty::NUMERIC;
+        ALTER TABLE iwkagri_transactions ALTER COLUMN grade_b_qty TYPE NUMERIC USING grade_b_qty::NUMERIC;
         CREATE TABLE IF NOT EXISTS iwkagri_invoices (
           id TEXT PRIMARY KEY,
           org TEXT NOT NULL,
