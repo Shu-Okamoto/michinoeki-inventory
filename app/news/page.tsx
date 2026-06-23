@@ -37,7 +37,7 @@ export default function NewsPage() {
     refresh()
   }
 
-  const isAdmin = me.role === '組合管理者'
+  const isAdmin = me.role === '組合管理者' || me.role === 'admin'
 
   async function post() {
     if (!form.title) { showToast('⚠️ タイトルを入力してください'); return }
@@ -59,7 +59,7 @@ export default function NewsPage() {
   const completedTx = txList.filter(t => t.status === 'completed')
     .sort((a, b) => (Number(!!a.producerConfirmed) - Number(!!b.producerConfirmed)) || (b.date || '').localeCompare(a.date || ''))
   const needConfirm = completedTx.filter(t => !t.producerConfirmed).length
-  const canConfirm = me.role === '生産者' || me.role === '組合管理者'
+  const canConfirm = me.role === '生産者' || me.role === '組合管理者' || me.role === '組合パートナー' || me.role === 'admin'
 
   const s = {
     box: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', marginBottom: 24 } as any,
