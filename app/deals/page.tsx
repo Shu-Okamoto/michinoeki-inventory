@@ -37,7 +37,7 @@ export default function DealsPage() {
   const myName = session?.user?.name || ''
   const isSuperAdmin = role === 'admin'
   const isAdmin = role === 'admin' || role === '組合パートナー' || role === '組合管理者'
-  const isProducer = role === '生産者'  // 生産者のみ生産者フィールドを自分固定
+  const isProducer = role === '生産者'
   const isSeller = role === '販売者' || isAdmin
   const canCreate = isAdmin || isProducer
 
