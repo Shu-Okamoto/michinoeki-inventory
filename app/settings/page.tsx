@@ -87,7 +87,7 @@ export default function SettingsPage() {
           <div style={{display:'flex',gap:8,marginBottom:8,flexWrap:'wrap' as any}}>
             <select style={{...s.input,maxWidth:180}} value={newProducer} onChange={e=>setNewProducer(e.target.value)}>
               <option value="">生産者を選択</option>
-              {(data.producers||[]).filter((p:any)=>(p.role||'生産者')==='生産者').map((p:any)=><option key={p.id} value={p.name}>{p.name}</option>)}
+              {(data.producers||[]).filter((p:any)=>((p.role||'生産者')==='生産者'||p.role==='組合パートナー'||p.role==='組合管理者')&&!p.disabled).map((p:any)=><option key={p.id} value={p.name}>{p.name}</option>)}
             </select>
             <input style={s.input} value={newProd} onChange={e=>setNewProd(e.target.value)} placeholder="商品名（例: トマト大袋）" />
             <input style={{...s.input,maxWidth:110,flex:'none'}} list="unit-list" value={newUnit} onChange={e=>setNewUnit(e.target.value)} placeholder="単位（袋/本/KG）" />
@@ -116,7 +116,7 @@ export default function SettingsPage() {
                   onChange={e=>setProducerEdits({...producerEdits,[pk]:e.target.value})}
                 >
                   <option value="">生産者なし</option>
-                  {(data.producers||[]).filter((x:any)=>(x.role||'生産者')==='生産者'&&!x.disabled).map((x:any)=><option key={x.id} value={x.name}>{x.name}</option>)}
+                  {(data.producers||[]).filter((x:any)=>((x.role||'生産者')==='生産者'||x.role==='組合パートナー'||x.role==='組合管理者')&&!x.disabled).map((x:any)=><option key={x.id} value={x.name}>{x.name}</option>)}
                 </select>
                 <input
                   style={{...s.input,maxWidth:80,flex:'none',padding:'5px 8px'}} list="unit-list"
