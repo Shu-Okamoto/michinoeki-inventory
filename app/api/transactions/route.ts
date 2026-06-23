@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { kvGet } from '@/lib/db'
-import { ORG } from '@/lib/users'
+import { ORG, isAdminRole, isPartnerRole, hasOperationalAccess } from '@/lib/users'
 import {
   createTransaction, confirmTransaction, gradeTransaction, enterSales, addSales, completeTransaction, confirmProducer,
   retrieveTransaction, souzaiTransaction, discountSaleTransaction, discardTransaction,
@@ -14,14 +14,12 @@ import {
 // コールドスタート時のDB起動待ちで504にならないよう関数の上限時間を延長
 export const maxDuration = 30
 
-const ADMIN = '組合管理者'
-
 // ロール別の情報統制：相手側の金額・手数料はレスポンスから除去する。
 //  生産者: 自分の受取額(満額)は見えるが、手数料・販売者請求は見えない
 //  販売者: 自分の支払(請求)額は見えるが、生産者請求・手数料は見えない
-//  組合管理者: すべて見える
+//  admin / 組合パートナー: すべて見える
 function redactByRole(t: any, role: string) {
-  if (role === ADMIN) return t
+  if (hasOperationalAccess(role)) return t
   const c = { ...t }
   if (role === '生産者') {
     delete c.commission; delete c.commissionRate; delete c.sellerAmount
@@ -62,12 +60,12 @@ export async function GET(req: NextRequest) {
   const scope: { producer?: string; seller?: string } = {}
   if (role === '生産者') scope.producer = myName
   else if (role === '販売者') scope.seller = myName
-  else if (role !== ADMIN) {
+  else if (!hasOperationalAccess(role)) {
     return NextResponse.json({ transactions: [], invoices: [], me: { name: myName, role } })
   }
   const [transactions, invoices] = await Promise.all([
     listTransactions(ORG, { status, period, ...scope }),
-    role === ADMIN ? listInvoices(ORG, period) : Promise.resolve([]),
+    isAdminRole(role) ? listInvoices(ORG, period) : Promise.resolve([]),
   ])
   return NextResponse.json({
     transactions: transactions.map(t => redactByRole(t, role)),
@@ -85,9 +83,9 @@ export async function POST(req: NextRequest) {
 
   switch (action) {
     case 'create': {
-      // 出荷登録(産直委託・生産者/組合) / 納品登録(買取・組合のみ)
-      if (role !== '生産者' && role !== ADMIN) return deny()
-      if ((payload.type || '産直') === '卸売' && role !== ADMIN) return deny()
+      // 出荷登録(産直委託・生産者/組合パートナー/admin) / 納品登録(買取・組合パートナー/adminのみ)
+      if (role !== '生産者' && !hasOperationalAccess(role)) return deny()
+      if ((payload.type || '産直') === '卸売' && !hasOperationalAccess(role)) return deny()
       const producerName = payload.producer || (role === '生産者' ? (session.user?.name || '') : '')
       const d = await defaults(payload.product, producerName)
       const id = await createTransaction(ORG, {
@@ -105,20 +103,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, id })
     }
     case 'distribute': {
-      // 組合宛て出荷の検品・分配（組合のみ）。複数販売先へ納品先・納品数を割当て販売中へ
-      if (role !== ADMIN) return deny()
+      // 組合宛て出荷の検品・分配（組合パートナー/admin）。複数販売先へ納品先・納品数を割当て販売中へ
+      if (!hasOperationalAccess(role)) return deny()
       const result = await distributeTransaction(ORG, payload.id, payload.allocations || [])
       return NextResponse.json({ ok: true, ...result })
     }
     case 'inspect': {
-      // 出荷確認・検品OK（販売者）。検品数を納品数として確定し販売中へ。産直委託向け。
-      if (role !== '販売者' && role !== ADMIN) return deny()
+      // 出荷確認・検品OK（販売者 / 組合パートナー / admin）。検品数を納品数として確定し販売中へ。産直委託向け。
+      if (role !== '販売者' && !hasOperationalAccess(role)) return deny()
       await confirmTransaction(ORG, payload.id, { deliveryQty: Number(payload.deliveryQty) || 0 })
       return NextResponse.json({ ok: true })
     }
     case 'grade': {
-      // 買取の検品（組合）：A品/B品(等級別単価)・廃棄数を入力
-      if (role !== ADMIN) return deny()
+      // 買取の検品（組合パートナー / admin）：A品/B品(等級別単価)・廃棄数を入力
+      if (!hasOperationalAccess(role)) return deny()
       const aQty = Number(payload.aQty) || 0, bQty = Number(payload.bQty) || 0, discardQty = Number(payload.discardQty) || 0
       const confirmedQty = payload.confirmedQty != null ? Number(payload.confirmedQty) : 0
       // 納品数（今回の入力値があればそれ、なければ既存値）を上限に検証
@@ -142,8 +140,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
     case 'confirm': {
-      // 組合が納品数を確定・調整（買取/卸売の仕切り）
-      if (role !== ADMIN) return deny()
+      // 組合が納品数を確定・調整（組合パートナー / admin）
+      if (!hasOperationalAccess(role)) return deny()
       await confirmTransaction(ORG, payload.id, {
         deliveryQty: Number(payload.deliveryQty) || 0,
         unitPrice: payload.unitPrice != null ? Number(payload.unitPrice) : undefined,
@@ -154,70 +152,70 @@ export async function POST(req: NextRequest) {
     }
     case 'enter_sales': {
       // 販売者が販売数を入力（累積の絶対値で設定）
-      if (role !== '販売者' && role !== ADMIN) return deny()
+      if (role !== '販売者' && !hasOperationalAccess(role)) return deny()
       await enterSales(ORG, payload.id, Number(payload.salesQty) || 0)
       return NextResponse.json({ ok: true })
     }
     case 'add_sales': {
       // 売上登録：その日の販売数を加算（残数があれば翌日も進行中として継続）
-      if (role !== '販売者' && role !== ADMIN) return deny()
+      if (role !== '販売者' && !hasOperationalAccess(role)) return deny()
       await addSales(ORG, payload.id, Number(payload.addQty) || 0, payload.date)
       return NextResponse.json({ ok: true })
     }
     case 'complete': {
       // 販売者が確認OK → 成立
-      if (role !== '販売者' && role !== ADMIN) return deny()
+      if (role !== '販売者' && !hasOperationalAccess(role)) return deny()
       await completeTransaction(ORG, payload.id)
       return NextResponse.json({ ok: true })
     }
     case 'retrieve': {
       // 引取依頼の数量確定（販売者が確定／生産者・組合も可）。産直のみ
-      if (role !== '販売者' && role !== '生産者' && role !== ADMIN) return deny()
+      if (role !== '販売者' && role !== '生産者' && !hasOperationalAccess(role)) return deny()
       await retrieveTransaction(ORG, payload.id, Number(payload.retrievedQty) || 0)
       return NextResponse.json({ ok: true })
     }
     case 'souzai': {
       // 惣菜利用（3割価格で買取）。産直のみ
-      if (role !== '販売者' && role !== ADMIN) return deny()
+      if (role !== '販売者' && !hasOperationalAccess(role)) return deny()
       await souzaiTransaction(ORG, payload.id, Number(payload.souzaiQty) || 0)
       return NextResponse.json({ ok: true })
     }
     case 'discount_sale': {
       // 割引販売（半額〜定価）。産直のみ
-      if (role !== '販売者' && role !== ADMIN) return deny()
+      if (role !== '販売者' && !hasOperationalAccess(role)) return deny()
       await discountSaleTransaction(ORG, payload.id, Number(payload.discountQty) || 0, Number(payload.discountUnitPrice) || 0)
       return NextResponse.json({ ok: true })
     }
     case 'discard': {
       // 廃棄（無償・棚残から減算）。産直のみ
-      if (role !== '販売者' && role !== ADMIN) return deny()
+      if (role !== '販売者' && !hasOperationalAccess(role)) return deny()
       await discardTransaction(ORG, payload.id, Number(payload.discardQty) || 0)
       return NextResponse.json({ ok: true })
     }
     case 'producer_confirm': {
-      // 生産者が成立内容を確認 → 請求書作成の対象へ（組合も代行可）
-      if (role !== '生産者' && role !== ADMIN) return deny()
+      // 生産者が成立内容を確認 → 請求書作成の対象へ（組合パートナー / admin も代行可）
+      if (role !== '生産者' && !hasOperationalAccess(role)) return deny()
       await confirmProducer(ORG, payload.id)
       return NextResponse.json({ ok: true })
     }
     case 'cancel': {
-      if (role !== ADMIN) return deny()
+      if (!hasOperationalAccess(role)) return deny()
       await cancelTransaction(ORG, payload.id)
       return NextResponse.json({ ok: true })
     }
     case 'patch': {
-      if (role !== ADMIN) return deny()
+      if (!hasOperationalAccess(role)) return deny()
       await patchTransaction(ORG, payload.id, payload.fields || {})
       return NextResponse.json({ ok: true })
     }
     case 'delete': {
-      if (role !== ADMIN) return deny()
+      if (!isAdminRole(role)) return deny()
       await deleteTransaction(ORG, payload.id)
       return NextResponse.json({ ok: true })
     }
     case 'generate_invoices': {
-      // 月末締め（組合のみ）
-      if (role !== ADMIN) return deny()
+      // 月末締め（adminのみ）
+      if (!isAdminRole(role)) return deny()
       const result = await generateInvoices(ORG, payload.period)
       return NextResponse.json({ ok: true, result })
     }
