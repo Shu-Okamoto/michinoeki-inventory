@@ -56,10 +56,15 @@ export default function NewsPage() {
 
   const sorted = [...list].sort((a, b) => (Number(b.pinned) - Number(a.pinned)) || b.date.localeCompare(a.date))
   // 成立した取引（completed）。未確認を先に、新しい順。
+  function canConfirm(t: any) {
+    if (me.role === 'admin' || me.role === '組合管理者') return true
+    if (me.role === '生産者') return true
+    if (me.role === '組合パートナー') return t.producer === me.name
+    return false
+  }
   const completedTx = txList.filter(t => t.status === 'completed')
     .sort((a, b) => (Number(!!a.producerConfirmed) - Number(!!b.producerConfirmed)) || (b.date || '').localeCompare(a.date || ''))
-  const needConfirm = completedTx.filter(t => !t.producerConfirmed).length
-  const canConfirm = me.role === '生産者' || me.role === '組合管理者' || me.role === '組合パートナー' || me.role === 'admin'
+  const needConfirm = completedTx.filter(t => !t.producerConfirmed && canConfirm(t)).length
 
   const s = {
     box: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', marginBottom: 24 } as any,
@@ -179,7 +184,7 @@ export default function NewsPage() {
                   <span style={{ marginLeft: 'auto' }}>
                     {t.producerConfirmed
                       ? <span style={{ fontSize: 12, color: 'var(--accent)' }}>✅ 確認済（請求書作成待ち）</span>
-                      : canConfirm
+                      : canConfirm(t)
                         ? <button style={s.btn} onClick={() => txAction('producer_confirm', { id: t.id }, '✅ 確認しました（請求書作成へ）')}>内容を確認する</button>
                         : <span style={{ fontSize: 12, color: 'var(--warn)' }}>生産者の確認待ち</span>}
                   </span>
