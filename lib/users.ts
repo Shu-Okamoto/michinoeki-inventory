@@ -16,6 +16,7 @@ export interface MasterUser {
   id: string
   name: string
   role: Role
+  disabled?: boolean
   company?: string
   email?: string
   phone?: string
@@ -67,6 +68,7 @@ export async function authenticateCredentials(loginId: string, password: string)
   const users = await getUsers()
   const u = users.find(x => x.loginId && x.loginId === loginId)
   if (!u || !verifyPassword(password, u.passwordHash)) return null
+  if (u.disabled) return null
   return { id: u.id, name: u.name, role: (u.role || '生産者') as Role, loginId: u.loginId }
 }
 
@@ -77,7 +79,7 @@ export async function resolveRoleByEmail(email?: string | null): Promise<{ role:
   if (admins.includes(email)) return { role: 'admin', name: email }
   const users = await getUsers()
   const hit = users.find(u => u.email && u.email === email)
-  if (hit) return { role: (hit.role || '生産者') as Role, name: hit.name }
+  if (hit) return hit.disabled ? { role: 'guest', name: hit.name } : { role: (hit.role || '生産者') as Role, name: hit.name }
   // ブートストラップ: 管理者がまだ一人も定義されていなければ最初のGoogleログインをadminに
   const hasAdmin = admins.length > 0 || users.some(u => u.role === 'admin' || u.role === '組合管理者')
   if (!hasAdmin) return { role: 'admin', name: email }

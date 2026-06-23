@@ -92,7 +92,7 @@ export default function SalesPage() {
                 ? <input style={{ ...s.select, opacity: .7 }} value={producer} disabled />
                 : <select style={s.select} value={producer} onChange={e => { setProducer(e.target.value); setEntries([{ product: '', qty: '' }]) }}>
                 <option value="">選択してください</option>
-                {(data.producers || []).filter((p: any) => (p.role || '生産者') === '生産者').map((p: any) => <option key={p.id} value={p.name}>{p.name}</option>)}
+                {(data.producers || []).filter((p: any) => (p.role || '生産者') === '生産者' && !p.disabled).map((p: any) => <option key={p.id} value={p.name}>{p.name}</option>)}
               </select>}
             </div>
             <div>

@@ -46,7 +46,7 @@ export default function SendPage() {
             ['組合員（生産者）', data.me?.role==='生産者'
               ? <input style={{...s.input,opacity:.7}} value={producer} disabled />
               : <select style={s.input} value={producer} onChange={e=>setProducer(e.target.value)}>
-              <option value="">選択</option>{(data.producers||[]).filter((p:any)=>(p.role||'生産者')==='生産者').map((p:any)=><option key={p.id} value={p.name}>{p.name}</option>)}</select>],
+              <option value="">選択</option>{(data.producers||[]).filter((p:any)=>(p.role||'生産者')==='生産者'&&!p.disabled).map((p:any)=><option key={p.id} value={p.name}>{p.name}</option>)}</select>],
             ['納品先（道の駅）', <select style={s.input} value={loc} onChange={e=>setLoc(e.target.value)}>
               <option value="">選択</option>{(data.locations||[]).filter((l:any)=>!l.producer || !producer || l.producer===producer).map((l:any)=><option key={l.id} value={l.name}>{l.name}</option>)}</select>],
             ['商品', <select style={s.input} value={prod} onChange={e=>setProd(e.target.value)}>
