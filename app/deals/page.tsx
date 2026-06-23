@@ -37,7 +37,7 @@ export default function DealsPage() {
   const myName = session?.user?.name || ''
   const isSuperAdmin = role === 'admin'
   const isAdmin = role === 'admin' || role === '組合パートナー' || role === '組合管理者'
-  const isProducer = role === '生産者' || isAdmin
+  const isProducer = role === '生産者'  // 生産者のみ生産者フィールドを自分固定
   const isSeller = role === '販売者' || isAdmin
   const canCreate = isAdmin || isProducer
 
@@ -93,8 +93,16 @@ export default function DealsPage() {
   function setDraft(id: string, k: string, v: any) { setDrafts(d => ({ ...d, [id]: { ...d[id], [k]: v } })) }
   function dv(t: any, k: string, fallback: any) { const d = drafts[t.id] || {}; return d[k] !== undefined ? d[k] : fallback }
 
-  const producerOpts = (master.producers || []).filter((p: any) => (p.role || '生産者') === '生産者' && !p.disabled)
-  const sellerOpts = (master.producers || []).filter((p: any) => p.role === '販売者' && !p.disabled)
+  // admin・組合パートナー共通: 生産者+組合パートナー。生産者: 自分のみ（選択不可）。
+  const producerOpts = (master.producers || []).filter((p: any) => {
+    if (p.disabled) return false
+    return (p.role || '生産者') === '生産者' || p.role === '組合パートナー' || p.role === '組合管理者'
+  })
+  // admin・組合パートナー共通: 販売者+組合パートナー。
+  const sellerOpts = (master.producers || []).filter((p: any) => {
+    if (p.disabled) return false
+    return p.role === '販売者' || p.role === '組合パートナー' || p.role === '組合管理者'
+  })
 
   const counts: Record<string, number> = { all: tx.length, active: tx.filter(t => ACTIVE.includes(t.status)).length }
   Object.keys(STATUS_META).forEach(k => { counts[k] = tx.filter(t => t.status === k).length })
