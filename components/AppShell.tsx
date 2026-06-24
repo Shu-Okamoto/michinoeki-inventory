@@ -17,6 +17,7 @@ const ITEMS = {
   sales:     { href: '/sales',     label: '🧾 売上入力' },
   email:     { href: '/email',     label: '✉️ Gmail連携' },
   history:   { href: '/history',   label: '📋 履歴' },
+  analysis:  { href: '/shipment-analysis', label: '📊 出荷分析' },
   settings:  { href: '/settings',  label: '⚙️ 設定' },
 }
 
@@ -40,14 +41,14 @@ function groupsForView(view: View) {
     { title: 'お知らせ', items: [ITEMS.news] },
     { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals, ITEMS.settlement] },
     { title: '🚚 共配システム', items: [ITEMS.kyohai] },
-    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history, ITEMS.email] },
+    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history, ITEMS.analysis, ITEMS.email] },
     { title: '⚙️ 管理', items: [ITEMS.producers, ITEMS.settings] },
   ]
   if (view === 'partner') return [
     { title: 'お知らせ', items: [ITEMS.news] },
     { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals] },
     { title: '🚚 共配システム', items: [ITEMS.kyohai] },
-    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history, ITEMS.email] },
+    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history, ITEMS.analysis, ITEMS.email] },
     { title: '⚙️ マスタ登録', items: [ITEMS.master] },
   ]
   if (view === 'seller') return [
@@ -59,7 +60,7 @@ function groupsForView(view: View) {
     { title: 'お知らせ', items: [ITEMS.news] },
     { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals] },
     { title: '🚚 共配システム', items: [ITEMS.kyohai] },
-    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history] },
+    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history, ITEMS.analysis] },
     { title: '⚙️ マスタ登録', items: [ITEMS.master] },
   ]
   return []
