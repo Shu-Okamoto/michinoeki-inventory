@@ -55,26 +55,35 @@ export default function ShipmentAnalysisPage() {
     return (t.salesQty || 0) + (t.discountQty || 0) + (t.souzaiQty || 0)
   }
 
-  // 日別リスト（日付・生産者・数量）
+  // 日別リスト（日付・生産者・商品名・数量）
   const dailyRows = useMemo(() => {
     return [...filtered]
       .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
-      .map(t => ({ date: t.date, producer: t.producer || '—', qty: txQty(t), type: t.type }))
+      .map(t => ({ date: t.date, producer: t.producer || '—', product: t.product || '—', qty: txQty(t) }))
   }, [filtered])
 
-  // 生産者別集計
+  // 生産者別・商品ごとの集計
   const producerRows = useMemo(() => {
-    const map = new Map<string, number>()
+    // producer → product → qty
+    const map = new Map<string, Map<string, number>>()
     filtered.forEach(t => {
       const p = t.producer || '—'
-      map.set(p, (map.get(p) || 0) + txQty(t))
+      const pr = t.product || '—'
+      if (!map.has(p)) map.set(p, new Map())
+      const inner = map.get(p)!
+      inner.set(pr, (inner.get(pr) || 0) + txQty(t))
     })
-    return Array.from(map.entries()).sort((a, b) => b[1] - a[1])
-      .map(([producer, qty]) => ({ producer, qty }))
+    return Array.from(map.entries())
+      .map(([producer, products]) => {
+        const items = Array.from(products.entries()).map(([product, qty]) => ({ product, qty })).sort((a, b) => b.qty - a.qty)
+        const total = items.reduce((s, i) => s + i.qty, 0)
+        return { producer, items, total }
+      })
+      .sort((a, b) => b.total - a.total)
   }, [filtered])
 
   const totalQty = filtered.reduce((a, t) => a + txQty(t), 0)
-  const maxBar = producerRows.length > 0 ? Math.max(...producerRows.map(r => r.qty)) : 1
+  const maxBar = producerRows.length > 0 ? Math.max(...producerRows.map(r => r.total)) : 1
 
   const s = {
     box: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', marginBottom: 20 } as React.CSSProperties,
@@ -132,16 +141,18 @@ export default function ShipmentAnalysisPage() {
               <tr style={{ background: 'var(--surface2)' }}>
                 <th style={s.th}>日付</th>
                 <th style={s.th}>生産者</th>
+                <th style={s.th}>商品名</th>
                 <th style={{ ...s.th, textAlign: 'right' as const }}>数量</th>
               </tr>
             </thead>
             <tbody>
               {dailyRows.length === 0
-                ? <tr><td colSpan={3} style={{ ...s.td, textAlign: 'center', color: 'var(--muted)', padding: 32 }}>データがありません</td></tr>
+                ? <tr><td colSpan={4} style={{ ...s.td, textAlign: 'center', color: 'var(--muted)', padding: 32 }}>データがありません</td></tr>
                 : dailyRows.map((r, i) => (
                   <tr key={i}>
                     <td style={{ ...s.td, fontFamily: 'Space Mono,monospace', fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{r.date}</td>
                     <td style={{ ...s.td, fontWeight: 600 }}>{r.producer}</td>
+                    <td style={s.td}>{r.product}</td>
                     <td style={{ ...s.td, fontFamily: 'Space Mono,monospace', color: 'var(--accent)', fontWeight: 700, textAlign: 'right' as const }}>{r.qty}</td>
                   </tr>
                 ))}
@@ -149,20 +160,28 @@ export default function ShipmentAnalysisPage() {
           </table>
         )}
 
-        {/* 生産者別：棒グラフ */}
+        {/* 生産者別：商品ごとの棒グラフ */}
         {tab === 'producer' && (
           <div style={{ padding: 20 }}>
             {producerRows.length === 0
               ? <div style={{ textAlign: 'center', color: 'var(--muted)', fontSize: 13, padding: 32 }}>データがありません</div>
               : producerRows.map(r => (
-                <div key={r.producer} style={{ marginBottom: 14 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 600, marginBottom: 5 }}>
+                <div key={r.producer} style={{ marginBottom: 24 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, display: 'flex', justifyContent: 'space-between' }}>
                     <span>{r.producer}</span>
-                    <span style={{ fontFamily: 'Space Mono,monospace', color: 'var(--accent)' }}>{r.qty.toLocaleString()}</span>
+                    <span style={{ fontFamily: 'Space Mono,monospace', color: 'var(--muted)', fontSize: 12 }}>合計 {r.total.toLocaleString()}</span>
                   </div>
-                  <div style={{ background: 'var(--surface2)', borderRadius: 6, height: 16, overflow: 'hidden' }}>
-                    <div style={{ width: `${(r.qty / maxBar) * 100}%`, height: '100%', background: 'var(--accent)', borderRadius: 6, transition: 'width .3s' }} />
-                  </div>
+                  {r.items.map((item: { product: string; qty: number }) => (
+                    <div key={item.product} style={{ marginBottom: 8 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                        <span style={{ color: 'var(--muted)' }}>{item.product}</span>
+                        <span style={{ fontFamily: 'Space Mono,monospace', color: 'var(--accent)', fontWeight: 700 }}>{item.qty}</span>
+                      </div>
+                      <div style={{ background: 'var(--surface2)', borderRadius: 4, height: 10, overflow: 'hidden' }}>
+                        <div style={{ width: `${(item.qty / maxBar) * 100}%`, height: '100%', background: 'var(--accent)', borderRadius: 4, transition: 'width .3s' }} />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ))}
           </div>
