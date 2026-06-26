@@ -57,14 +57,18 @@ export async function GET(req: NextRequest) {
   const status = (searchParams.get('status') || undefined) as TxStatus | undefined
   const period = searchParams.get('period') || undefined
   // 自分宛ての取引だけを返す（生産者=自分が生産者 / 販売者=自分が販売者 / 組合=全部）
+  // 生産者が商品名を指定した場合は同商品の全生産者分も返す（出荷分析用）
+  const filterProduct = searchParams.get('product') || undefined
   const scope: { producer?: string; seller?: string } = {}
-  if (role === '生産者') scope.producer = myName
-  else if (role === '販売者') scope.seller = myName
+  if (role === '生産者') {
+    if (!filterProduct) scope.producer = myName
+    // filterProduct 指定時はscopeなし（同商品の全生産者分を取得）
+  } else if (role === '販売者') scope.seller = myName
   else if (!hasOperationalAccess(role)) {
     return NextResponse.json({ transactions: [], invoices: [], me: { name: myName, role } })
   }
   const [transactions, invoices] = await Promise.all([
-    listTransactions(ORG, { status, period, ...scope }),
+    listTransactions(ORG, { status, period, product: filterProduct, ...scope }),
     isAdminRole(role) ? listInvoices(ORG, period) : Promise.resolve([]),
   ])
   return NextResponse.json({
