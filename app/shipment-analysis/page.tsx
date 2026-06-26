@@ -8,47 +8,56 @@ type Tab = 'daily' | 'producer'
 
 export default function ShipmentAnalysisPage() {
   const [me, setMe] = useState<any>({})
-  const [txList, setTxList] = useState<any[]>([])
+  const [myTxList, setMyTxList] = useState<any[]>([])   // 自分の取引（商品セレクト用）
+  const [allTxList, setAllTxList] = useState<any[]>([]) // 商品指定時の全生産者分
   const [month, setMonth] = useState(thisMonth())
   const [product, setProduct] = useState('')
   const [tab, setTab] = useState<Tab>('daily')
 
   useEffect(() => {
     fetch('/api/inventory').then(r => r.json()).then(d => setMe(d.me || {}))
-    fetch('/api/transactions').then(r => r.json()).then(d => setTxList(d.transactions || []))
+    fetch('/api/transactions').then(r => r.json()).then(d => setMyTxList(d.transactions || []))
   }, [])
+
+  // 商品選択時に同商品の全生産者分を取得
+  useEffect(() => {
+    if (!product) { setAllTxList([]); return }
+    fetch(`/api/transactions?product=${encodeURIComponent(product)}`)
+      .then(r => r.json()).then(d => setAllTxList(d.transactions || []))
+  }, [product])
 
   const role = me?.role || ''
   const isAdmin = role === 'admin'
   const isPartner = role === '組合パートナー' || role === '組合管理者'
   const isProducer = role === '生産者'
 
-  // 成立した取引のみ
-  const completed = useMemo(() => txList.filter(t => t.status === 'completed'), [txList])
+  // 自分の成立取引のみ（商品セレクト・月リスト用）
+  const myCompleted = useMemo(() => myTxList.filter(t => t.status === 'completed'), [myTxList])
 
   // 自分が出荷している商品のみ（生産者ロールは自分名義、admin/partnerは全件）
   const myProducts = useMemo(() => {
     const base = (isAdmin || isPartner)
-      ? completed
-      : completed.filter(t => t.producer === me?.name)
+      ? myCompleted
+      : myCompleted.filter(t => t.producer === me?.name)
     const set = new Set(base.map(t => t.product).filter(Boolean))
     return Array.from(set).sort()
-  }, [completed, isAdmin, isPartner, me?.name])
+  }, [myCompleted, isAdmin, isPartner, me?.name])
 
   // 月リスト
   const months = useMemo(() => {
-    const set = new Set<string>(completed.map(t => (t.date || '').slice(0, 7)).filter(Boolean))
+    const set = new Set<string>(myCompleted.map(t => (t.date || '').slice(0, 7)).filter(Boolean))
     const arr = Array.from(set).sort().reverse()
     if (!arr.includes(thisMonth())) arr.unshift(thisMonth())
     return arr
-  }, [completed])
+  }, [myCompleted])
 
-  // 選択商品 × 月 でフィルター（生産者制限なし＝全生産者分表示）
+  // 表示データ：商品選択時は全生産者分、未選択時は自分の取引のみ
+  const baseTx = product ? allTxList.filter(t => t.status === 'completed') : myCompleted
   const filtered = useMemo(() => {
-    return completed.filter(t =>
+    return baseTx.filter(t =>
       (t.date || '').startsWith(month) && (!product || t.product === product)
     )
-  }, [completed, month, product])
+  }, [baseTx, month, product])
 
   function txQty(t: any): number {
     if (t.type === '卸売') return (t.gradeAQty || 0) + (t.gradeBQty || 0)

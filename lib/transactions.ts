@@ -512,7 +512,7 @@ export async function deleteTransaction(org: string, id: string): Promise<void> 
   })
 }
 
-export interface ListTxFilter { status?: TxStatus; period?: string; producer?: string; seller?: string }
+export interface ListTxFilter { status?: TxStatus; period?: string; producer?: string; seller?: string; product?: string }
 export async function listTransactions(org: string, filter: ListTxFilter = {}): Promise<Transaction[]> {
   await initTxTables()
   return withRetry(async () => {
@@ -524,6 +524,7 @@ export async function listTransactions(org: string, filter: ListTxFilter = {}): 
         AND (${filter.period ?? null}::text IS NULL OR date LIKE ${(filter.period ?? '') + '%'})
         AND (${filter.producer ?? null}::text IS NULL OR producer = ${filter.producer ?? null})
         AND (${filter.seller ?? null}::text IS NULL OR seller = ${filter.seller ?? null})
+        AND (${filter.product ?? null}::text IS NULL OR product = ${filter.product ?? null})
       ORDER BY created_at DESC, id DESC
     `
     return rows.map(rowToTx)
