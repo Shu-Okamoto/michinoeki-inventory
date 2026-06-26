@@ -39,16 +39,16 @@ function groupsForView(view: View) {
   // 表示順: お知らせ / ワークフロー / 共配システム / 在庫管理ツール / 管理
   if (view === 'admin') return [
     { title: 'お知らせ', items: [ITEMS.news] },
-    { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals, ITEMS.settlement] },
+    { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals, ITEMS.settlement, ITEMS.analysis] },
     { title: '🚚 共配システム', items: [ITEMS.kyohai] },
-    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history, ITEMS.analysis, ITEMS.email] },
+    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history, ITEMS.email] },
     { title: '⚙️ 管理', items: [ITEMS.producers, ITEMS.settings] },
   ]
   if (view === 'partner') return [
     { title: 'お知らせ', items: [ITEMS.news] },
-    { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals] },
+    { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals, ITEMS.analysis] },
     { title: '🚚 共配システム', items: [ITEMS.kyohai] },
-    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history, ITEMS.analysis, ITEMS.email] },
+    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history, ITEMS.email] },
     { title: '⚙️ マスタ登録', items: [ITEMS.master] },
   ]
   if (view === 'seller') return [
@@ -58,9 +58,9 @@ function groupsForView(view: View) {
   ]
   if (view === 'producer') return [
     { title: 'お知らせ', items: [ITEMS.news] },
-    { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals] },
+    { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals, ITEMS.analysis] },
     { title: '🚚 共配システム', items: [ITEMS.kyohai] },
-    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history, ITEMS.analysis] },
+    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history] },
     { title: '⚙️ マスタ登録', items: [ITEMS.master] },
   ]
   return []
