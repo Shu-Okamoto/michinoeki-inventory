@@ -170,7 +170,7 @@ export default function NewsPage() {
           <div style={s.boxBody}>
             {completedTx.map(t => {
               const u = t.unit || ''
-              const qty = t.type === '卸売' ? ((t.gradeAQty || 0) + (t.gradeBQty || 0)) : ((t.salesQty || 0) + (t.discountQty || 0) + (t.souzaiQty || 0))
+              const qty = Math.round((t.type === '卸売' ? ((t.gradeAQty || 0) + (t.gradeBQty || 0)) : ((t.salesQty || 0) + (t.discountQty || 0) + (t.souzaiQty || 0))) * 10) / 10
               const amount = t.producerAmount != null ? t.producerAmount : t.sellerAmount
               const amountLabel = t.producerAmount != null ? '受取額' : 'ご請求額'
               return (

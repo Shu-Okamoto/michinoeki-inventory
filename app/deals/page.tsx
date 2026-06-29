@@ -216,7 +216,7 @@ export default function DealsPage() {
           const hasBreakdown = t.type !== '卸売' && ((t.discountQty || 0) > 0 || (t.souzaiQty || 0) > 0)
           const gradeBreak = t.type === '卸売' && ((t.gradeAQty || 0) + (t.gradeBQty || 0)) > 0
           const u = t.unit || ''
-          const shelf = Math.max(0, (t.deliveryQty || 0) - (t.salesQty || 0) - (t.retrievedQty || 0) - (t.souzaiQty || 0) - (t.discountQty || 0) - (t.discardQty || 0))
+          const shelf = Math.round(Math.max(0, (t.deliveryQty || 0) - (t.salesQty || 0) - (t.retrievedQty || 0) - (t.souzaiQty || 0) - (t.discountQty || 0) - (t.discardQty || 0)) * 10) / 10
           return (
             <div key={t.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 16 }}>
               {/* ヘッダー */}
