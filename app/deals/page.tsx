@@ -336,8 +336,8 @@ export default function DealsPage() {
                 {isAdmin && t.type === '卸売' && (t.status === 'shipped' || t.status === 'confirmed') && (() => {
                   const gDelivery = Number(dv(t, 'gDelivery', t.deliveryQty || t.shipQty || 0)) || 0
                   const gConfirmed = Number(dv(t, 'confirmedQty', t.confirmedQty || t.deliveryQty || t.shipQty || 0)) || 0
-                  const gTotal = (Number(dv(t, 'aQty', t.gradeAQty || 0)) || 0) + (Number(dv(t, 'bQty', t.gradeBQty || 0)) || 0) + (Number(dv(t, 'discardQty', t.discardQty || 0)) || 0)
-                  const over = gDelivery > 0 && (gTotal > gDelivery || gConfirmed > gDelivery)
+                  const gTotal = Math.round(((Number(dv(t, 'aQty', t.gradeAQty || 0)) || 0) + (Number(dv(t, 'bQty', t.gradeBQty || 0)) || 0) + (Number(dv(t, 'discardQty', t.discardQty || 0)) || 0)) * 10) / 10
+                  const over = gDelivery > 0 && (gTotal > Math.round(gDelivery * 10) / 10 || Math.round(gConfirmed * 10) / 10 > Math.round(gDelivery * 10) / 10)
                   const gradePayload = () => ({
                     id: t.id,
                     deliveryQty: Number(dv(t, 'gDelivery', t.deliveryQty || t.shipQty || 0)),
