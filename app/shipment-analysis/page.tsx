@@ -60,8 +60,10 @@ export default function ShipmentAnalysisPage() {
   }, [baseTx, month, product])
 
   function txQty(t: any): number {
-    if (t.type === '卸売') return (t.gradeAQty || 0) + (t.gradeBQty || 0)
-    return (t.salesQty || 0) + (t.discountQty || 0) + (t.souzaiQty || 0)
+    const raw = t.type === '卸売'
+      ? (t.gradeAQty || 0) + (t.gradeBQty || 0)
+      : (t.salesQty || 0) + (t.discountQty || 0) + (t.souzaiQty || 0)
+    return Math.round(raw * 10) / 10
   }
 
   // 日別リスト（日付・生産者・商品名・数量）
