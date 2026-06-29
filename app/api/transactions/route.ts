@@ -126,10 +126,11 @@ export async function POST(req: NextRequest) {
       // 納品数（今回の入力値があればそれ、なければ既存値）を上限に検証
       let dq = payload.deliveryQty != null ? Number(payload.deliveryQty) : NaN
       if (!Number.isFinite(dq)) { const cur = await getTransaction(ORG, payload.id); dq = cur?.deliveryQty || 0 }
-      if (dq > 0 && confirmedQty > dq) {
+      const r1 = (n: number) => Math.round(n * 10) / 10
+      if (dq > 0 && r1(confirmedQty) > r1(dq)) {
         return NextResponse.json({ error: `納品確認数(${confirmedQty})が納品数(${dq})を超えています` }, { status: 400 })
       }
-      if (dq > 0 && (aQty + bQty + discardQty) > dq) {
+      if (dq > 0 && r1(aQty + bQty + discardQty) > r1(dq)) {
         return NextResponse.json({ error: `検品数 A品+B品+不良品(${aQty + bQty + discardQty})が納品数(${dq})を超えています` }, { status: 400 })
       }
       await gradeTransaction(ORG, payload.id, {
