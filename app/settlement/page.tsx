@@ -57,7 +57,7 @@ export default function SettlementPage() {
   const pendingCommission = pending.reduce((a, t) => a + (t.commission || 0), 0)
   const pendingSales = pending.reduce((a, t) => a + (t.amount || 0), 0)
   // 産直の棚残（納品−実売−引取−惣菜−割引）＝翌月へ繰越される分
-  const onShelf = (t: any) => Math.max(0, (t.deliveryQty || 0) - (t.salesQty || 0) - (t.retrievedQty || 0) - (t.souzaiQty || 0) - (t.discountQty || 0) - (t.discardQty || 0))
+  const onShelf = (t: any) => Math.round(Math.max(0, (t.deliveryQty || 0) - (t.salesQty || 0) - (t.retrievedQty || 0) - (t.souzaiQty || 0) - (t.discountQty || 0) - (t.discardQty || 0)) * 10) / 10
   const carryovers = pending.filter(t => t.type !== '卸売' && t.status !== 'completed' && onShelf(t) > 0)
   const carryQty = carryovers.reduce((a, t) => a + onShelf(t), 0)
 
@@ -133,7 +133,7 @@ export default function SettlementPage() {
         }
         return rows
       }
-      const bq = t.type === '卸売' ? (t.deliveryQty || 0) : ((t.salesQty || 0) + (t.discountQty || 0) + (t.souzaiQty || 0))
+      const bq = Math.round((t.type === '卸売' ? (t.deliveryQty || 0) : ((t.salesQty || 0) + (t.discountQty || 0) + (t.souzaiQty || 0))) * 10) / 10
       return [`<tr><td>${esc(t.date)}</td><td>${esc(t.product)}</td><td>${esc(tl)}</td><td class="r">${bq}${u}</td><td class="r">${yen(t.unitPrice)}</td><td class="r">${yen(t.amount)}</td>${commCell(t.commission || 0)}</tr>`]
     }).join('')
 
