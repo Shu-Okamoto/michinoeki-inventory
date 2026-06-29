@@ -13,6 +13,7 @@ export default function ShipmentAnalysisPage() {
   const [month, setMonth] = useState(thisMonth())
   const [product, setProduct] = useState('')
   const [tab, setTab] = useState<Tab>('daily')
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     fetch('/api/inventory').then(r => r.json()).then(d => setMe(d.me || {}))
@@ -66,11 +67,20 @@ export default function ShipmentAnalysisPage() {
     return Math.round(raw * 10) / 10
   }
 
-  // 日別リスト（日付・生産者・商品名・数量）
-  const dailyRows = useMemo(() => {
-    return [...filtered]
-      .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
-      .map(t => ({ date: t.date, producer: t.producer || '—', product: t.product || '—', qty: txQty(t) }))
+  // 日別：日付ごとにグループ化
+  const dailyGroups = useMemo(() => {
+    const map = new Map<string, { producer: string; product: string; qty: number }[]>()
+    const sorted = [...filtered].sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+    sorted.forEach(t => {
+      const d = t.date || ''
+      if (!map.has(d)) map.set(d, [])
+      map.get(d)!.push({ producer: t.producer || '—', product: t.product || '—', qty: txQty(t) })
+    })
+    return Array.from(map.entries()).map(([date, rows]) => ({
+      date,
+      total: Math.round(rows.reduce((s, r) => s + r.qty, 0) * 10) / 10,
+      rows,
+    }))
   }, [filtered])
 
   // 生産者別・商品ごとの集計
@@ -145,30 +155,45 @@ export default function ShipmentAnalysisPage() {
           <button style={s.tab(tab === 'producer')} onClick={() => setTab('producer')}>👤 生産者別</button>
         </div>
 
-        {/* 日別：日付・生産者・数量リスト */}
+        {/* 日別：日付ごとに折りたたみ */}
         {tab === 'daily' && (
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'var(--surface2)' }}>
-                <th style={s.th}>日付</th>
-                <th style={s.th}>生産者</th>
-                <th style={s.th}>商品名</th>
-                <th style={{ ...s.th, textAlign: 'right' as const }}>数量</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dailyRows.length === 0
-                ? <tr><td colSpan={4} style={{ ...s.td, textAlign: 'center', color: 'var(--muted)', padding: 32 }}>データがありません</td></tr>
-                : dailyRows.map((r, i) => (
-                  <tr key={i}>
-                    <td style={{ ...s.td, fontFamily: 'Space Mono,monospace', fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{r.date}</td>
-                    <td style={{ ...s.td, fontWeight: 600 }}>{r.producer}</td>
-                    <td style={s.td}>{r.product}</td>
-                    <td style={{ ...s.td, fontFamily: 'Space Mono,monospace', color: 'var(--accent)', fontWeight: 700, textAlign: 'right' as const }}>{r.qty}</td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
+          dailyGroups.length === 0
+            ? <div style={{ textAlign: 'center', color: 'var(--muted)', fontSize: 13, padding: 32 }}>データがありません</div>
+            : <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: 'var(--surface2)' }}>
+                  <th style={s.th}>日付</th>
+                  <th style={{ ...s.th, textAlign: 'right' as const }}>合計</th>
+                  <th style={{ ...s.th, width: 80 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {dailyGroups.map(g => {
+                  const open = expanded.has(g.date)
+                  const toggle = () => setExpanded(prev => {
+                    const next = new Set(prev)
+                    open ? next.delete(g.date) : next.add(g.date)
+                    return next
+                  })
+                  return (
+                    <>
+                      <tr key={g.date} style={{ cursor: 'pointer', background: open ? 'var(--surface2)' : undefined }} onClick={toggle}>
+                        <td style={{ ...s.td, fontFamily: 'Space Mono,monospace', fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{g.date}</td>
+                        <td style={{ ...s.td, fontFamily: 'Space Mono,monospace', color: 'var(--accent)', fontWeight: 700, textAlign: 'right' as const }}>{g.total}</td>
+                        <td style={{ ...s.td, textAlign: 'center' as const, color: 'var(--muted)', fontSize: 12 }}>{open ? '▲ 閉じる' : '▼ 詳細'}</td>
+                      </tr>
+                      {open && g.rows.map((r, i) => (
+                        <tr key={`${g.date}-${i}`} style={{ background: 'var(--surface2)' }}>
+                          <td style={{ ...s.td, paddingLeft: 28, fontSize: 12, color: 'var(--muted)' }}>{r.producer}　{r.product}</td>
+                          <td style={{ ...s.td, fontFamily: 'Space Mono,monospace', fontSize: 12, color: 'var(--accent)', textAlign: 'right' as const }}>{r.qty}</td>
+                          <td style={s.td}></td>
+                        </tr>
+                      ))}
+                    </>
+                  )
+                })}
+              </tbody>
+            </table>
         )}
 
         {/* 生産者別：商品ごとの棒グラフ */}
