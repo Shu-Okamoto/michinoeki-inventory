@@ -479,6 +479,22 @@ export async function confirmProducer(org: string, id: string, date?: string): P
   })
 }
 
+// 成立(completed)を差し戻して進行中へ戻す。生産者確認も解除し、数量等を再編集できるようにする。
+//  - 卸売は confirmed（検品やり直し）へ、産直は sales_entered（販売入力やり直し）へ戻す
+//  - 精算済(settled)・取消(canceled)は対象外
+export async function reopenTransaction(org: string, id: string): Promise<void> {
+  await initTxTables()
+  await withRetry(async () => {
+    const sql = getSql()
+    await sql`
+      UPDATE iwkagri_transactions
+      SET status = CASE WHEN type = '卸売' THEN 'confirmed' ELSE 'sales_entered' END,
+          producer_confirmed = false, producer_confirmed_at = NULL, updated_at = NOW()
+      WHERE org = ${org} AND id = ${id} AND status = 'completed'
+    `
+  })
+}
+
 export async function cancelTransaction(org: string, id: string): Promise<void> {
   await initTxTables()
   await withRetry(async () => {

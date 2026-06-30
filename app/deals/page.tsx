@@ -421,6 +421,10 @@ export default function DealsPage() {
                   </>
                 )}
 
+                {/* 組合: 成立の差し戻し（進行中へ戻して再編集） */}
+                {isAdmin && t.status === 'completed' && (
+                  <button style={s.btn2} onClick={() => { if (confirm('この成立を差し戻して進行中の状態に戻します。\n（生産者の確認も解除され、数量等を再編集できます）\nよろしいですか？')) action('reopen', { id: t.id }, '↩️ 成立を差し戻しました（進行中へ）') }}>↩️ 成立を差し戻す</button>
+                )}
                 {/* 組合: 取消・削除 */}
                 {isAdmin && t.status !== 'settled' && t.status !== 'canceled' && (
                   <button style={s.btnDanger} onClick={() => action('cancel', { id: t.id }, '取消しました')}>取消</button>
