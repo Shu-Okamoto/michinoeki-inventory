@@ -66,6 +66,8 @@ export interface Invoice {
   total: number
   status: string
   createdAt?: string
+  transferred?: boolean
+  transferredAt?: string
 }
 
 export const SOUZAI_RATE = 0.3   // 惣菜利用は単価の3割で買取
@@ -183,6 +185,8 @@ function initTxTables(): Promise<void> {
           created_at TIMESTAMP DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_iwkagri_invoices_org_period ON iwkagri_invoices (org, period);
+        ALTER TABLE iwkagri_invoices ADD COLUMN IF NOT EXISTS transferred BOOLEAN NOT NULL DEFAULT false;
+        ALTER TABLE iwkagri_invoices ADD COLUMN IF NOT EXISTS transferred_at TEXT;
       `)
     }).catch(err => { initPromise = null; throw err })
   }
@@ -651,6 +655,18 @@ export async function listInvoices(org: string, period?: string): Promise<Invoic
       id: r.id, period: r.period, kind: r.kind, party: r.party,
       subtotal: Number(r.subtotal) || 0, commission: Number(r.commission) || 0, total: Number(r.total) || 0,
       status: r.status, createdAt: r.created_at,
+      transferred: r.transferred === true, transferredAt: r.transferred_at || undefined,
     }))
+  })
+}
+
+// 生産者請求書の振込状態を更新（振込管理用）
+export async function setInvoiceTransferred(org: string, id: string, transferred: boolean, date?: string): Promise<void> {
+  await initTxTables()
+  return withRetry(async () => {
+    const sql = getSql()
+    await sql`UPDATE iwkagri_invoices
+      SET transferred = ${transferred}, transferred_at = ${transferred ? (date || new Date().toISOString().slice(0, 10)) : null}
+      WHERE org = ${org} AND id = ${id}`
   })
 }

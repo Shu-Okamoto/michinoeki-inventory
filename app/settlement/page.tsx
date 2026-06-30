@@ -30,6 +30,7 @@ export default function SettlementPage() {
   const [period, setPeriod] = useState(thisMonth())
   const [tx, setTx] = useState<any[]>([])
   const [invoices, setInvoices] = useState<any[]>([])
+  const [producers, setProducers] = useState<any[]>([])
   const [toast, setToast] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -39,8 +40,19 @@ export default function SettlementPage() {
     })
   }, [])
   useEffect(() => { load(period) }, [period, load])
+  useEffect(() => { fetch('/api/inventory').then(r => r.json()).then(d => setProducers(d.producers || [])) }, [])
 
   function showToast(m: string) { setToast(m); setTimeout(() => setToast(''), 3000) }
+  const bankInfo = (party: string) => producers.find(p => p.name === party)
+
+  async function toggleTransferred(inv: any) {
+    await fetch('/api/transactions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'mark_transferred', payload: { id: inv.id, transferred: !inv.transferred } }),
+    })
+    showToast(inv.transferred ? '↩️ 未振込に戻しました' : '✅ 振込済みにしました')
+    load(period)
+  }
 
   // 精算対象（確認済み以降・未精算）/ 精算済
   // 産直は実売分で部分決算、卸売は納品数で全額決算。
@@ -296,7 +308,7 @@ export default function SettlementPage() {
       {invoices.length > 0 && (
         <>
           <h2 style={{ fontSize: 15, fontWeight: 700, margin: '8px 0 12px' }}>発行済み請求書（{period}）</h2>
-          <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'auto' }}>
+          <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'auto', marginBottom: 20 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr>
                 {['種別', '対象', '販売金額', '手数料', '合計', '状態'].map(h => <th key={h} style={{ ...s.th, textAlign: h === '対象' || h === '種別' || h === '状態' ? 'left' : 'right' }}>{h}</th>)}
@@ -312,6 +324,40 @@ export default function SettlementPage() {
                     <td style={s.td}>{inv.status}</td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* 生産者への振込管理 */}
+          <h2 style={{ fontSize: 15, fontWeight: 700, margin: '8px 0 12px' }}>🏦 生産者への振込管理（{period}）</h2>
+          <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr>
+                {['生産者', '支払額', '振込先', '状態', ''].map(h => <th key={h} style={{ ...s.th, textAlign: h === '支払額' ? 'right' : 'left' }}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {invoices.filter(inv => inv.kind === 'producer').map(inv => {
+                  const b = bankInfo(inv.party)
+                  return (
+                    <tr key={inv.id}>
+                      <td style={s.td}>{inv.party}</td>
+                      <td style={{ ...s.tdr, fontWeight: 700 }}>{yen(inv.total)}</td>
+                      <td style={{ ...s.td, color: 'var(--muted)' }}>
+                        {b?.bankAccountNumber
+                          ? <span>{b.bankName} {b.bankBranch} {b.bankAccountType} {b.bankAccountNumber}　{b.bankAccountHolder}</span>
+                          : <span style={{ color: 'var(--danger)' }}>⚠️ 振込先未登録（ユーザー管理で登録してください）</span>}
+                      </td>
+                      <td style={s.td}>
+                        {inv.transferred
+                          ? <span style={{ color: 'var(--accent)' }}>✅ 振込済（{inv.transferredAt}）</span>
+                          : <span style={{ color: 'var(--warn)' }}>未振込</span>}
+                      </td>
+                      <td style={s.td}>
+                        <button style={s.btn2} onClick={() => toggleTransferred(inv)}>{inv.transferred ? '未振込に戻す' : '✅ 振込済みにする'}</button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

@@ -8,7 +8,7 @@ import {
   retrieveTransaction, souzaiTransaction, discountSaleTransaction, discardTransaction,
   distributeTransaction,
   cancelTransaction, patchTransaction, deleteTransaction, getTransaction,
-  listTransactions, generateInvoices, listInvoices, TxStatus,
+  listTransactions, generateInvoices, listInvoices, setInvoiceTransferred, TxStatus,
 } from '@/lib/transactions'
 
 // コールドスタート時のDB起動待ちで504にならないよう関数の上限時間を延長
@@ -223,6 +223,12 @@ export async function POST(req: NextRequest) {
       if (!isAdminRole(role)) return deny()
       const result = await generateInvoices(ORG, payload.period)
       return NextResponse.json({ ok: true, result })
+    }
+    case 'mark_transferred': {
+      // 生産者請求書の振込済みフラグ更新（振込管理・adminのみ）
+      if (!isAdminRole(role)) return deny()
+      await setInvoiceTransferred(ORG, payload.id, !!payload.transferred, payload.date)
+      return NextResponse.json({ ok: true })
     }
     default:
       return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
