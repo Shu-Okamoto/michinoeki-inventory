@@ -149,10 +149,15 @@ export default function SettlementPage() {
       return [`<tr><td>${esc(t.date)}</td><td>${esc(t.product)}</td><td>${esc(tl)}</td><td class="r">${bq}${u}</td><td class="r">${yen(t.unitPrice)}</td><td class="r">${yen(t.amount)}</td>${commCell(t.commission || 0)}</tr>`]
     }).join('')
 
+    // 苗字（姓名の間に空白があれば姓、なければ先頭2文字）にデジタル印を付与
+    const surname = (name: string) => { const parts = name.trim().split(/\s+/); return parts.length > 1 ? parts[0] : name.slice(0, 2) }
+    const seal = (name: string) => `<span class="seal">${esc(surname(name))}印</span>`
+
     const invoiceBlock = (g: Grp, kind: 'producer' | 'seller') => {
       // 生産者請求書: 生産者 → 組合（宛先=組合）。販売者請求書: 組合 → 販売者（宛先=販売者）。
       const to = kind === 'producer' ? `${ORG_NAME} 御中` : `${esc(g.party)} 御中`
       const from = kind === 'producer' ? esc(g.party) : ORG_NAME
+      const b = kind === 'producer' ? bankInfo(g.party) : null
       const total = kind === 'producer' ? g.subtotal : g.total
       const tax8 = taxIn8(g.subtotal)
       const tax10 = kind === 'seller' ? taxIn10(g.commission) : 0
@@ -161,12 +166,15 @@ export default function SettlementPage() {
         <div class="head">
           <div><div class="title">請求書</div>
           <div class="period">対象期間: ${esc(period)}　発行日: ${esc(issueDate)}</div></div>
-          <div class="org"><div class="orglabel">発行</div>${from}</div>
+          <div class="org">
+            <div class="orglabel">発行</div>
+            <div class="orgname">${from}${seal(from)}</div>
+            ${b?.address ? `<div class="orgline">${esc(b.address)}</div>` : ''}
+            ${b?.bankAccountNumber ? `<div class="orgline">${esc(b.bankName)} ${esc(b.bankBranch)} ${esc(b.bankAccountType)} ${esc(b.bankAccountNumber)}　${esc(b.bankAccountHolder)}</div>` : ''}
+          </div>
         </div>
         <div class="to">${to}</div>
-        <div class="note">${kind === 'producer'
-          ? '下記の通りご請求申し上げます（産直品の販売金額・全額）。'
-          : '下記の通りご請求申し上げます（販売金額＋組合手数料）。'}</div>
+        <div class="note">下記の通りご請求申し上げます。</div>
         <div class="due">お支払期日: <b>${esc(dueDate)}</b>（月末締め・翌月10日払い）</div>
         <table>
           <thead><tr><th>日付</th><th>商品</th><th>種別</th><th class="r">数量</th><th class="r">単価</th><th class="r">金額</th>${kind === 'seller' ? '<th class="r">手数料</th>' : ''}</tr></thead>
@@ -189,6 +197,9 @@ export default function SettlementPage() {
         .title{font-size:22px;font-weight:700;} .period{font-size:12px;color:#666;margin-top:4px;}
         .org{font-size:13px;font-weight:700;text-align:right;}
         .orglabel{font-size:10px;font-weight:400;color:#888;}
+        .orgname{display:flex;align-items:center;justify-content:flex-end;gap:6px;}
+        .orgline{font-size:11px;font-weight:400;color:#444;margin-top:2px;}
+        .seal{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:1.5px solid #c0392b;border-radius:50%;color:#c0392b;font-size:10px;font-weight:700;transform:rotate(-8deg);line-height:1;}
         .to{font-size:18px;font-weight:700;margin:18px 0 6px;border-bottom:1px solid #333;display:inline-block;padding:0 24px 4px 0;}
         .note{font-size:12px;color:#555;margin-bottom:6px;}
         .due{font-size:13px;margin-bottom:12px;}
