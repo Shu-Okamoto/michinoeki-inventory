@@ -408,6 +408,40 @@ export default function SettlementPage() {
               </tbody>
             </table>
           </div>
+
+          {/* 生産者への振込管理 */}
+          <h2 style={{ fontSize: 15, fontWeight: 700, margin: '8px 0 12px' }}>🏦 生産者への振込管理（{period}）</h2>
+          <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr>
+                {['生産者', '支払額', '振込先', '状態', ''].map(h => <th key={h} style={{ ...s.th, textAlign: h === '支払額' ? 'right' : 'left' }}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {invoices.filter(inv => inv.kind === 'producer').map(inv => {
+                  const b = bankInfo(inv.party)
+                  return (
+                    <tr key={inv.id}>
+                      <td style={s.td}>{inv.party}</td>
+                      <td style={{ ...s.tdr, fontWeight: 700 }}>{yen(inv.total)}</td>
+                      <td style={{ ...s.td, color: 'var(--muted)' }}>
+                        {b?.bankAccountNumber
+                          ? <span>{b.bankName} {b.bankBranch} {b.bankAccountType} {b.bankAccountNumber}　{b.bankAccountHolder}</span>
+                          : <span style={{ color: 'var(--danger)' }}>⚠️ 振込先未登録（ユーザー管理で登録してください）</span>}
+                      </td>
+                      <td style={s.td}>
+                        {inv.transferred
+                          ? <span style={{ color: 'var(--accent)' }}>✅ 振込済（{inv.transferredAt}）</span>
+                          : <span style={{ color: 'var(--warn)' }}>未振込</span>}
+                      </td>
+                      <td style={s.td}>
+                        <button style={s.btn2} onClick={() => toggleTransferred(inv)}>{inv.transferred ? '未振込に戻す' : '✅ 振込済みにする'}</button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
 
