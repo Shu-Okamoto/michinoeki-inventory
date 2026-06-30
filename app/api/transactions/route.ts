@@ -8,7 +8,7 @@ import {
   retrieveTransaction, souzaiTransaction, discountSaleTransaction, discardTransaction,
   distributeTransaction,
   cancelTransaction, patchTransaction, deleteTransaction, getTransaction,
-  listTransactions, generateInvoices, listInvoices, setInvoiceTransferred, updateInvoice, TxStatus,
+  listTransactions, generateInvoices, listInvoices, setInvoiceTransferred, updateInvoice, cancelInvoice, TxStatus,
 } from '@/lib/transactions'
 
 // コールドスタート時のDB起動待ちで504にならないよう関数の上限時間を延長
@@ -238,6 +238,16 @@ export async function POST(req: NextRequest) {
       if (payload.commission != null) fields.commission = Number(payload.commission)
       await updateInvoice(ORG, payload.id, fields)
       return NextResponse.json({ ok: true })
+    }
+    case 'cancel_invoice': {
+      // 発行済み請求書の差し戻し（取消＋再発行手続き・adminのみ）
+      if (!isAdminRole(role)) return deny()
+      try {
+        await cancelInvoice(ORG, payload.id)
+        return NextResponse.json({ ok: true })
+      } catch (e: any) {
+        return NextResponse.json({ error: e?.message || '差し戻しに失敗しました' }, { status: 400 })
+      }
     }
     default:
       return NextResponse.json({ error: 'Unknown action' }, { status: 400 })

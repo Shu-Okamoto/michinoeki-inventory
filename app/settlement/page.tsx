@@ -72,6 +72,19 @@ export default function SettlementPage() {
     load(period)
   }
 
+  async function rejectInvoice(inv: any) {
+    if (inv.transferred) { showToast('⚠️ 振込済みの請求書は差し戻せません'); return }
+    if (!confirm(`「${inv.party}」の請求書（${inv.kind === 'producer' ? '生産者請求' : '販売者請求'}）を差し戻します。\n紐づく取引は精算前の状態に戻り、内容を修正後に再度締め処理で請求書を再発行できます。\nよろしいですか？`)) return
+    const res = await fetch('/api/transactions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'cancel_invoice', payload: { id: inv.id } }),
+    })
+    const j = await res.json().catch(() => ({}))
+    if (!res.ok) { showToast('⚠️ ' + (j.error || '差し戻しに失敗しました')); return }
+    showToast('↩️ 請求書を差し戻しました（対象取引は再編集可能です）')
+    load(period)
+  }
+
   // 精算対象（確認済み以降・未精算）/ 精算済
   // 産直は実売分で部分決算、卸売は納品数で全額決算。
   // 請求対象: 進行中(confirmed/sales_entered) ＋ 成立かつ生産者確認済(completed && producerConfirmed)
@@ -367,7 +380,10 @@ export default function SettlementPage() {
                           <button style={s.btn2} onClick={() => saveEditInvoice(inv)}>保存</button>
                           <button style={{ ...s.btn2, marginLeft: 6 }} onClick={() => setEditingInv(null)}>取消</button>
                         </>
-                        : <button style={s.btn2} onClick={() => startEditInvoice(inv)}>✏️ 修正</button>)}
+                        : <>
+                          <button style={s.btn2} onClick={() => startEditInvoice(inv)}>✏️ 修正</button>
+                          <button style={{ ...s.btn2, marginLeft: 6, color: 'var(--danger)' }} onClick={() => rejectInvoice(inv)}>↩️ 差し戻し</button>
+                        </>)}
                     </td>
                   </tr>
                 )})}
