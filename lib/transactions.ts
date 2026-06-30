@@ -670,3 +670,20 @@ export async function setInvoiceTransferred(org: string, id: string, transferred
       WHERE org = ${org} AND id = ${id}`
   })
 }
+
+// 発行済み請求書の金額を訂正（誤入力・後日修正用）。合計は販売金額＋手数料で再計算する。
+export async function updateInvoice(org: string, id: string, fields: { subtotal?: number; commission?: number }): Promise<void> {
+  await initTxTables()
+  return withRetry(async () => {
+    const sql = getSql()
+    const rows = await sql`SELECT * FROM iwkagri_invoices WHERE org = ${org} AND id = ${id}`
+    if (rows.length === 0) throw new Error('請求書が見つかりません')
+    const cur = rows[0]
+    const subtotal = fields.subtotal != null ? Number(fields.subtotal) : Number(cur.subtotal) || 0
+    const commission = fields.commission != null ? Number(fields.commission) : Number(cur.commission) || 0
+    const total = subtotal + commission
+    await sql`UPDATE iwkagri_invoices
+      SET subtotal = ${subtotal}, commission = ${commission}, total = ${total}
+      WHERE org = ${org} AND id = ${id}`
+  })
+}
