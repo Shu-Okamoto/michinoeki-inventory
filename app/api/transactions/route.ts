@@ -7,7 +7,7 @@ import {
   createTransaction, confirmTransaction, gradeTransaction, enterSales, addSales, completeTransaction, confirmProducer,
   retrieveTransaction, souzaiTransaction, discountSaleTransaction, discardTransaction,
   distributeTransaction,
-  cancelTransaction, patchTransaction, deleteTransaction, getTransaction,
+  cancelTransaction, reopenTransaction, patchTransaction, deleteTransaction, getTransaction,
   listTransactions, generateInvoices, listInvoices, setInvoiceTransferred, updateInvoice, cancelInvoice, TxStatus,
 } from '@/lib/transactions'
 
@@ -201,6 +201,12 @@ export async function POST(req: NextRequest) {
       // 生産者が成立内容を確認 → 請求書作成の対象へ（組合パートナー / admin も代行可）
       if (role !== '生産者' && !hasOperationalAccess(role)) return deny()
       await confirmProducer(ORG, payload.id)
+      return NextResponse.json({ ok: true })
+    }
+    case 'reopen': {
+      // 成立を差し戻して進行中へ戻す（組合パートナー / admin）。生産者確認も解除し再編集可能に
+      if (!hasOperationalAccess(role)) return deny()
+      await reopenTransaction(ORG, payload.id)
       return NextResponse.json({ ok: true })
     }
     case 'cancel': {
