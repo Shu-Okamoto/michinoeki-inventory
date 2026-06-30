@@ -33,6 +33,8 @@ export default function SettlementPage() {
   const [producers, setProducers] = useState<any[]>([])
   const [toast, setToast] = useState('')
   const [busy, setBusy] = useState(false)
+  const [editingInv, setEditingInv] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({ subtotal: 0, commission: 0 })
 
   const load = useCallback((p: string) => {
     fetch(`/api/transactions?period=${p}`).then(r => r.json()).then(d => {
@@ -51,6 +53,22 @@ export default function SettlementPage() {
       body: JSON.stringify({ action: 'mark_transferred', payload: { id: inv.id, transferred: !inv.transferred } }),
     })
     showToast(inv.transferred ? '↩️ 未振込に戻しました' : '✅ 振込済みにしました')
+    load(period)
+  }
+
+  function startEditInvoice(inv: any) {
+    setEditingInv(inv.id)
+    setEditForm({ subtotal: inv.subtotal, commission: inv.commission })
+  }
+
+  async function saveEditInvoice(inv: any) {
+    if (!confirm(`「${inv.party}」の請求書（${inv.kind === 'producer' ? '生産者請求' : '販売者請求'}）の金額を修正します。よろしいですか？`)) return
+    await fetch('/api/transactions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'edit_invoice', payload: { id: inv.id, subtotal: editForm.subtotal, commission: editForm.commission } }),
+    })
+    showToast('✅ 請求書を修正しました')
+    setEditingInv(null)
     load(period)
   }
 
@@ -322,19 +340,71 @@ export default function SettlementPage() {
           <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'auto', marginBottom: 20 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr>
-                {['種別', '対象', '販売金額', '手数料', '合計', '状態'].map(h => <th key={h} style={{ ...s.th, textAlign: h === '対象' || h === '種別' || h === '状態' ? 'left' : 'right' }}>{h}</th>)}
+                {['種別', '対象', '販売金額', '手数料', '合計', '状態', ''].map(h => <th key={h} style={{ ...s.th, textAlign: h === '対象' || h === '種別' || h === '状態' || h === '' ? 'left' : 'right' }}>{h}</th>)}
               </tr></thead>
               <tbody>
-                {invoices.map(inv => (
+                {invoices.map(inv => {
+                  const isEditing = editingInv === inv.id
+                  return (
                   <tr key={inv.id}>
                     <td style={s.td}>{inv.kind === 'producer' ? '生産者請求' : '販売者請求'}</td>
                     <td style={s.td}>{inv.party}</td>
-                    <td style={s.tdr}>{yen(inv.subtotal)}</td>
-                    <td style={s.tdr}>{yen(inv.commission)}</td>
-                    <td style={{ ...s.tdr, fontWeight: 700 }}>{yen(inv.total)}</td>
+                    <td style={s.tdr}>
+                      {isEditing
+                        ? <input type="number" value={editForm.subtotal} onChange={e => setEditForm({ ...editForm, subtotal: Number(e.target.value) })} style={{ width: 100, textAlign: 'right', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', color: 'var(--text)' }} />
+                        : yen(inv.subtotal)}
+                    </td>
+                    <td style={s.tdr}>
+                      {isEditing
+                        ? <input type="number" value={editForm.commission} onChange={e => setEditForm({ ...editForm, commission: Number(e.target.value) })} style={{ width: 90, textAlign: 'right', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', color: 'var(--text)' }} />
+                        : yen(inv.commission)}
+                    </td>
+                    <td style={{ ...s.tdr, fontWeight: 700 }}>{isEditing ? yen(editForm.subtotal + editForm.commission) : yen(inv.total)}</td>
                     <td style={s.td}>{inv.status}</td>
+                    <td style={s.td}>
+                      {isAdmin && (isEditing
+                        ? <>
+                          <button style={s.btn2} onClick={() => saveEditInvoice(inv)}>保存</button>
+                          <button style={{ ...s.btn2, marginLeft: 6 }} onClick={() => setEditingInv(null)}>取消</button>
+                        </>
+                        : <button style={s.btn2} onClick={() => startEditInvoice(inv)}>✏️ 修正</button>)}
+                    </td>
                   </tr>
-                ))}
+                )})}
+              </tbody>
+            </table>
+          </div>
+
+          {/* 生産者への振込管理 */}
+          <h2 style={{ fontSize: 15, fontWeight: 700, margin: '8px 0 12px' }}>🏦 生産者への振込管理（{period}）</h2>
+          <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr>
+                {['生産者', '支払額', '振込先', '状態', ''].map(h => <th key={h} style={{ ...s.th, textAlign: h === '支払額' ? 'right' : 'left' }}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {invoices.filter(inv => inv.kind === 'producer').map(inv => {
+                  const b = bankInfo(inv.party)
+                  return (
+                    <tr key={inv.id}>
+                      <td style={s.td}>{inv.party}</td>
+                      <td style={{ ...s.tdr, fontWeight: 700 }}>{yen(inv.total)}</td>
+                      <td style={{ ...s.td, color: 'var(--muted)' }}>
+                        {b?.bankAccountNumber
+                          ? <span>{b.bankName} {b.bankBranch} {b.bankAccountType} {b.bankAccountNumber}　{b.bankAccountHolder}</span>
+                          : <span style={{ color: 'var(--danger)' }}>⚠️ 振込先未登録（ユーザー管理で登録してください）</span>}
+                      </td>
+                      <td style={s.td}>
+                        {inv.transferred
+                          ? <span style={{ color: 'var(--accent)' }}>✅ 振込済（{inv.transferredAt}）</span>
+                          : <span style={{ color: 'var(--warn)' }}>未振込</span>}
+                      </td>
+                      <td style={s.td}>
+                        <button style={s.btn2} onClick={() => toggleTransferred(inv)}>{inv.transferred ? '未振込に戻す' : '✅ 振込済みにする'}</button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
