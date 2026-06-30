@@ -49,9 +49,12 @@ async function migrateLegacy(legacyUserId?: string | null) {
   await kvSet(ORG, '_migrated', true)
 }
 
-// passwordHash を除いた安全な組合員一覧
-function sanitizeProducers(list: any[]): any[] {
-  return (list || []).map(({ passwordHash, ...rest }: any) => ({ ...rest, hasLogin: !!rest.loginId }))
+// passwordHash を除いた安全な組合員一覧。住所・振込先は組合（admin/パートナー）以外には返さない。
+function sanitizeProducers(list: any[], role: string): any[] {
+  return (list || []).map(({ passwordHash, address, bankName, bankBranch, bankAccountType, bankAccountNumber, bankAccountHolder, ...rest }: any) => {
+    const base = { ...rest, hasLogin: !!rest.loginId }
+    return hasOperationalAccess(role) ? { ...base, address, bankName, bankBranch, bankAccountType, bankAccountNumber, bankAccountHolder } : base
+  })
 }
 
 export async function GET(req: NextRequest) {
@@ -82,7 +85,7 @@ export async function GET(req: NextRequest) {
     shipments: shp,
     sales: sls,
     gmailSettings: gmailSettings || { labelId: '', labelName: '', autoFetch: false },
-    producers: sanitizeProducers(producers as any[]),
+    producers: sanitizeProducers(producers as any[], role),
     announcements: announcements || [],
     settings: settings || { kyohaiUrl: '' },
     me: { name: myName, role, view: roleToView(role), email: session.user?.email || '' },
@@ -139,7 +142,10 @@ export async function POST(req: NextRequest) {
     }
     case 'add_producer': {
       const list: any[] = await kvGet(ORG, 'producers') || []
-      const rec: any = { id: uid(), name: payload.name, role: payload.role || '生産者', company: payload.company || '', email: payload.email || '', phone: payload.phone || '', note: payload.note || '', loginId: payload.loginId || '' }
+      const rec: any = {
+        id: uid(), name: payload.name, role: payload.role || '生産者', company: payload.company || '', email: payload.email || '', phone: payload.phone || '', note: payload.note || '', loginId: payload.loginId || '',
+        address: payload.address || '', bankName: payload.bankName || '', bankBranch: payload.bankBranch || '', bankAccountType: payload.bankAccountType || '', bankAccountNumber: payload.bankAccountNumber || '', bankAccountHolder: payload.bankAccountHolder || '',
+      }
       if (payload.password) rec.passwordHash = hashPassword(payload.password)
       list.push(rec)
       await kvSet(ORG, 'producers', list)

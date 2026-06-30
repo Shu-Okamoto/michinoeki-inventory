@@ -23,6 +23,12 @@ export interface MasterUser {
   note?: string
   loginId?: string
   passwordHash?: string
+  address?: string
+  bankName?: string
+  bankBranch?: string
+  bankAccountType?: string
+  bankAccountNumber?: string
+  bankAccountHolder?: string
 }
 
 // パスワードを salt:hash 形式へ
