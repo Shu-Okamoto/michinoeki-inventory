@@ -164,6 +164,12 @@ function initTxTables(): Promise<void> {
         ALTER TABLE iwkagri_transactions ALTER COLUMN confirmed_qty TYPE NUMERIC USING confirmed_qty::NUMERIC;
         ALTER TABLE iwkagri_transactions ALTER COLUMN grade_a_qty TYPE NUMERIC USING grade_a_qty::NUMERIC;
         ALTER TABLE iwkagri_transactions ALTER COLUMN grade_b_qty TYPE NUMERIC USING grade_b_qty::NUMERIC;
+        ALTER TABLE iwkagri_transactions ALTER COLUMN sales_qty TYPE NUMERIC USING sales_qty::NUMERIC;
+        ALTER TABLE iwkagri_transactions ALTER COLUMN retrieved_qty TYPE NUMERIC USING retrieved_qty::NUMERIC;
+        ALTER TABLE iwkagri_transactions ALTER COLUMN souzai_qty TYPE NUMERIC USING souzai_qty::NUMERIC;
+        ALTER TABLE iwkagri_transactions ALTER COLUMN discount_qty TYPE NUMERIC USING discount_qty::NUMERIC;
+        ALTER TABLE iwkagri_transactions ALTER COLUMN discard_qty TYPE NUMERIC USING discard_qty::NUMERIC;
+        ALTER TABLE iwkagri_transactions ALTER COLUMN settled_qty TYPE NUMERIC USING settled_qty::NUMERIC;
         CREATE TABLE IF NOT EXISTS iwkagri_invoices (
           id TEXT PRIMARY KEY,
           org TEXT NOT NULL,
