@@ -671,6 +671,63 @@ export async function setInvoiceTransferred(org: string, id: string, transferred
   })
 }
 
+// 発行済み請求書を差し戻す（取消＋再発行手続き）。
+//  - 振込済みの請求書は差し戻し不可
+//  - 紐づく取引を精算前の状態（confirmed）に戻し、数量・単価を編集可能にする
+//  - 同じ取引から生成された対になる請求書（生産者⇔販売者）がある場合は、その分の金額を差し引いて整合性を保つ
+export async function cancelInvoice(org: string, id: string): Promise<void> {
+  await initTxTables()
+  return withRetry(async () => {
+    const sql = getSql()
+    const invRows = await sql`SELECT * FROM iwkagri_invoices WHERE org = ${org} AND id = ${id}`
+    if (invRows.length === 0) throw new Error('請求書が見つかりません')
+    const inv = invRows[0]
+    if (inv.transferred) throw new Error('振込済みの請求書は差し戻せません')
+
+    const txRows = inv.kind === 'producer'
+      ? await sql`SELECT * FROM iwkagri_transactions WHERE org = ${org} AND invoice_id = ${inv.period} AND status = 'settled' AND producer = ${inv.party}`
+      : await sql`SELECT * FROM iwkagri_transactions WHERE org = ${org} AND invoice_id = ${inv.period} AND status = 'settled' AND seller = ${inv.party}`
+    const txs = txRows.map(rowToTx)
+
+    // 対になる請求書（このinvoiceとは逆側のkind）から、差し戻す取引分の金額を差し引く
+    const counterKind = inv.kind === 'producer' ? 'seller' : 'producer'
+    const deduct = new Map<string, { subtotal: number; commission: number }>()
+    for (const t of txs) {
+      const counterParty = (counterKind === 'producer' ? t.producer : t.seller) || '（未割当）'
+      const d = deduct.get(counterParty) || { subtotal: 0, commission: 0 }
+      if (counterKind === 'producer') {
+        d.subtotal += t.producerAmount || 0
+      } else {
+        d.subtotal += t.amount || 0
+        d.commission += t.commission || 0
+      }
+      deduct.set(counterParty, d)
+    }
+    for (const [party, d] of deduct) {
+      const counterRows = await sql`SELECT * FROM iwkagri_invoices WHERE org = ${org} AND period = ${inv.period} AND kind = ${counterKind} AND party = ${party}`
+      if (counterRows.length === 0) continue
+      const c = counterRows[0]
+      const newSubtotal = Math.max(0, (Number(c.subtotal) || 0) - d.subtotal)
+      const newCommission = Math.max(0, (Number(c.commission) || 0) - d.commission)
+      const newTotal = newSubtotal + newCommission
+      if (newSubtotal === 0 && newCommission === 0) {
+        await sql`DELETE FROM iwkagri_invoices WHERE org = ${org} AND id = ${c.id}`
+      } else {
+        await sql`UPDATE iwkagri_invoices SET subtotal = ${newSubtotal}, commission = ${newCommission}, total = ${newTotal} WHERE org = ${org} AND id = ${c.id}`
+      }
+    }
+
+    // 取引を精算前（confirmed）に戻し、数量・単価を編集可能にする
+    for (const t of txs) {
+      await sql`UPDATE iwkagri_transactions
+        SET status = 'confirmed', settled_qty = NULL, invoice_id = NULL, producer_confirmed = false, producer_confirmed_at = NULL, updated_at = NOW()
+        WHERE org = ${org} AND id = ${t.id}`
+    }
+
+    await sql`DELETE FROM iwkagri_invoices WHERE org = ${org} AND id = ${id}`
+  })
+}
+
 // 発行済み請求書の金額を訂正（誤入力・後日修正用）。合計は販売金額＋手数料で再計算する。
 export async function updateInvoice(org: string, id: string, fields: { subtotal?: number; commission?: number }): Promise<void> {
   await initTxTables()
