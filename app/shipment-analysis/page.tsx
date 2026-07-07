@@ -102,16 +102,17 @@ export default function ShipmentAnalysisPage() {
       const inner = map.get(p)!
       inner.set(pr, (inner.get(pr) || 0) + txQty(t))
     })
+    const r1 = (n: number) => Math.round(n * 10) / 10
     return Array.from(map.entries())
       .map(([producer, products]) => {
-        const items = Array.from(products.entries()).map(([product, qty]) => ({ product, qty })).sort((a, b) => b.qty - a.qty)
-        const total = items.reduce((s, i) => s + i.qty, 0)
+        const items = Array.from(products.entries()).map(([product, qty]) => ({ product, qty: r1(qty) })).sort((a, b) => b.qty - a.qty)
+        const total = r1(items.reduce((s, i) => s + i.qty, 0))
         return { producer, items, total }
       })
       .sort((a, b) => b.total - a.total)
   }, [filtered])
 
-  const totalQty = filtered.reduce((a, t) => a + txQty(t), 0)
+  const totalQty = Math.round(filtered.reduce((a, t) => a + txQty(t), 0) * 10) / 10
   const maxBar = producerRows.length > 0 ? Math.max(...producerRows.map(r => r.total)) : 1
 
   const s = {
