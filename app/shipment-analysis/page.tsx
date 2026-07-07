@@ -11,6 +11,9 @@ export default function ShipmentAnalysisPage() {
   const [myTxList, setMyTxList] = useState<any[]>([])   // 自分の取引（商品セレクト用）
   const [allTxList, setAllTxList] = useState<any[]>([]) // 商品指定時の全生産者分
   const [month, setMonth] = useState(thisMonth())
+  const [rangeMode, setRangeMode] = useState(false)
+  const [fromMonth, setFromMonth] = useState(thisMonth())
+  const [toMonth, setToMonth] = useState(thisMonth())
   const [product, setProduct] = useState('')
   const [tab, setTab] = useState<Tab>('daily')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -32,8 +35,8 @@ export default function ShipmentAnalysisPage() {
   const isPartner = role === '組合パートナー' || role === '組合管理者'
   const isProducer = role === '生産者'
 
-  // 自分の成立取引のみ（商品セレクト・月リスト用）
-  const myCompleted = useMemo(() => myTxList.filter(t => t.status === 'completed'), [myTxList])
+  // 自分の成立・精算済取引（商品セレクト・月リスト用）。精算後もsettledとして分析対象に含める
+  const myCompleted = useMemo(() => myTxList.filter(t => t.status === 'completed' || t.status === 'settled'), [myTxList])
 
   // 自分が出荷している商品のみ（生産者ロールは自分名義、admin/partnerは全件）
   const myProducts = useMemo(() => {
@@ -53,12 +56,17 @@ export default function ShipmentAnalysisPage() {
   }, [myCompleted])
 
   // 表示データ：商品選択時は全生産者分、未選択時は自分の取引のみ
-  const baseTx = product ? allTxList.filter(t => t.status === 'completed') : myCompleted
+  const baseTx = product ? allTxList.filter(t => t.status === 'completed' || t.status === 'settled') : myCompleted
   const filtered = useMemo(() => {
-    return baseTx.filter(t =>
-      (t.date || '').startsWith(month) && (!product || t.product === product)
-    )
-  }, [baseTx, month, product])
+    // 期間モード: 開始月〜終了月（両端含む）。単月モード: 選択月のみ
+    const [lo, hi] = fromMonth <= toMonth ? [fromMonth, toMonth] : [toMonth, fromMonth]
+    return baseTx.filter(t => {
+      if (product && t.product !== product) return false
+      const ym = (t.date || '').slice(0, 7)
+      if (!ym) return false
+      return rangeMode ? (ym >= lo && ym <= hi) : ym === month
+    })
+  }, [baseTx, month, rangeMode, fromMonth, toMonth, product])
 
   function txQty(t: any): number {
     const raw = t.type === '卸売'
@@ -123,10 +131,22 @@ export default function ShipmentAnalysisPage() {
       {/* ヘッダー */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <h2 style={{ fontSize: 15, fontWeight: 700 }}>📊 出荷分析 <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>（成立した取引のみ）</span></h2>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <select value={month} onChange={e => setMonth(e.target.value)} style={s.select}>
-            {months.map(m => <option key={m} value={m}>{m}</option>)}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select value={rangeMode ? 'range' : 'single'} onChange={e => setRangeMode(e.target.value === 'range')} style={s.select}>
+            <option value="single">単月</option>
+            <option value="range">期間</option>
           </select>
+          {rangeMode ? (
+            <>
+              <input type="month" value={fromMonth} onChange={e => setFromMonth(e.target.value)} style={s.select} />
+              <span style={{ fontSize: 13, color: 'var(--muted)' }}>〜</span>
+              <input type="month" value={toMonth} onChange={e => setToMonth(e.target.value)} style={s.select} />
+            </>
+          ) : (
+            <select value={month} onChange={e => setMonth(e.target.value)} style={s.select}>
+              {months.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          )}
           <select value={product} onChange={e => setProduct(e.target.value)} style={{ ...s.select, minWidth: 160 }}>
             <option value="">すべての商品</option>
             {myProducts.map(p => <option key={p} value={p}>{p}</option>)}
