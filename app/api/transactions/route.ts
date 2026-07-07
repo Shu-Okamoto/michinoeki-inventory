@@ -67,13 +67,20 @@ export async function GET(req: NextRequest) {
   else if (!hasOperationalAccess(role)) {
     return NextResponse.json({ transactions: [], invoices: [], me: { name: myName, role } })
   }
-  const [transactions, invoices] = await Promise.all([
+  // 請求書: 組合(admin)は全件、生産者/販売者は自分宛ての請求書のみ返す
+  const wantInvoices = isAdminRole(role) || role === '生産者' || role === '販売者'
+  const [transactions, allInvoices] = await Promise.all([
     listTransactions(ORG, { status, period, product: filterProduct, ...scope }),
-    isAdminRole(role) ? listInvoices(ORG, period) : Promise.resolve([]),
+    wantInvoices ? listInvoices(ORG, period) : Promise.resolve([]),
   ])
+  const invoices = isAdminRole(role)
+    ? allInvoices
+    : role === '生産者' ? allInvoices.filter(i => i.kind === 'producer' && i.party === myName)
+    : role === '販売者' ? allInvoices.filter(i => i.kind === 'seller' && i.party === myName)
+    : []
   return NextResponse.json({
     transactions: transactions.map(t => redactByRole(t, role)),
-    invoices, // 請求書バッチ（手数料等を含む）は組合管理者のみ
+    invoices, // 組合は全件、生産者/販売者は自分宛てのみ
     me: { name: session.user?.name || '', role },
   })
 }
