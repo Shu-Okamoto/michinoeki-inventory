@@ -79,6 +79,9 @@ export async function GET(req: NextRequest) {
   const myName = session.user?.name || ''
   const shp = role === '生産者' ? (shipments as any[] || []).filter((x: any) => x.producer === myName) : (shipments || [])
   const sls = role === '生産者' ? (sales as any[] || []).filter((x: any) => x.producer === myName) : (sales || [])
+  // 自分自身のマスタ情報（住所・振込先を含む）。請求書の発行者欄に自分の情報を表示するため本人にのみ返す
+  const selfRaw = (producers as any[] || []).find((p: any) => p.name === myName)
+  const self = selfRaw ? (({ passwordHash, ...rest }: any) => rest)(selfRaw) : undefined
   return NextResponse.json({
     locations: normLocations(locations as any[]),
     products: products || [],
@@ -88,7 +91,7 @@ export async function GET(req: NextRequest) {
     producers: sanitizeProducers(producers as any[], role),
     announcements: announcements || [],
     settings: settings || { kyohaiUrl: '' },
-    me: { name: myName, role, view: roleToView(role), email: session.user?.email || '' },
+    me: { name: myName, role, view: roleToView(role), email: session.user?.email || '', self },
   })
 }
 
