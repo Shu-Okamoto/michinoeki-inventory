@@ -32,8 +32,8 @@ export default function ShipmentAnalysisPage() {
   const isPartner = role === '組合パートナー' || role === '組合管理者'
   const isProducer = role === '生産者'
 
-  // 自分の成立取引のみ（商品セレクト・月リスト用）
-  const myCompleted = useMemo(() => myTxList.filter(t => t.status === 'completed'), [myTxList])
+  // 自分の成立・精算済取引（商品セレクト・月リスト用）。精算後もsettledとして分析対象に含める
+  const myCompleted = useMemo(() => myTxList.filter(t => t.status === 'completed' || t.status === 'settled'), [myTxList])
 
   // 自分が出荷している商品のみ（生産者ロールは自分名義、admin/partnerは全件）
   const myProducts = useMemo(() => {
@@ -53,7 +53,7 @@ export default function ShipmentAnalysisPage() {
   }, [myCompleted])
 
   // 表示データ：商品選択時は全生産者分、未選択時は自分の取引のみ
-  const baseTx = product ? allTxList.filter(t => t.status === 'completed') : myCompleted
+  const baseTx = product ? allTxList.filter(t => t.status === 'completed' || t.status === 'settled') : myCompleted
   const filtered = useMemo(() => {
     return baseTx.filter(t =>
       (t.date || '').startsWith(month) && (!product || t.product === product)
