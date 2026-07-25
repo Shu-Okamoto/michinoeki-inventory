@@ -3,6 +3,7 @@ import AppShell from '@/components/AppShell'
 import { useEffect, useMemo, useState } from 'react'
 
 const thisMonth = () => new Date().toISOString().slice(0, 7)
+const yen = (n: number) => '¥' + (Number(n) || 0).toLocaleString()
 
 type Tab = 'daily' | 'producer'
 
@@ -74,45 +75,55 @@ export default function ShipmentAnalysisPage() {
       : (t.salesQty || 0) + (t.discountQty || 0) + (t.souzaiQty || 0)
     return Math.round(raw * 10) / 10
   }
+  // 出荷金額（請求基準の販売金額）。ロールにより非開示の場合は0扱い
+  function txAmount(t: any): number {
+    return Math.round(Number(t.amount) || 0)
+  }
 
   // 日別：日付ごとにグループ化
   const dailyGroups = useMemo(() => {
-    const map = new Map<string, { producer: string; product: string; qty: number }[]>()
+    const map = new Map<string, { producer: string; product: string; qty: number; amount: number }[]>()
     const sorted = [...filtered].sort((a, b) => (a.date || '').localeCompare(b.date || ''))
     sorted.forEach(t => {
       const d = t.date || ''
       if (!map.has(d)) map.set(d, [])
-      map.get(d)!.push({ producer: t.producer || '—', product: t.product || '—', qty: txQty(t) })
+      map.get(d)!.push({ producer: t.producer || '—', product: t.product || '—', qty: txQty(t), amount: txAmount(t) })
     })
     return Array.from(map.entries()).map(([date, rows]) => ({
       date,
       total: Math.round(rows.reduce((s, r) => s + r.qty, 0) * 10) / 10,
+      totalAmount: rows.reduce((s, r) => s + r.amount, 0),
       rows,
     }))
   }, [filtered])
 
   // 生産者別・商品ごとの集計
   const producerRows = useMemo(() => {
-    // producer → product → qty
-    const map = new Map<string, Map<string, number>>()
+    // producer → product → { qty, amount }
+    const map = new Map<string, Map<string, { qty: number; amount: number }>>()
     filtered.forEach(t => {
       const p = t.producer || '—'
       const pr = t.product || '—'
       if (!map.has(p)) map.set(p, new Map())
       const inner = map.get(p)!
-      inner.set(pr, (inner.get(pr) || 0) + txQty(t))
+      const cur = inner.get(pr) || { qty: 0, amount: 0 }
+      inner.set(pr, { qty: cur.qty + txQty(t), amount: cur.amount + txAmount(t) })
     })
     const r1 = (n: number) => Math.round(n * 10) / 10
     return Array.from(map.entries())
       .map(([producer, products]) => {
-        const items = Array.from(products.entries()).map(([product, qty]) => ({ product, qty: r1(qty) })).sort((a, b) => b.qty - a.qty)
+        const items = Array.from(products.entries())
+          .map(([product, v]) => ({ product, qty: r1(v.qty), amount: v.amount }))
+          .sort((a, b) => b.qty - a.qty)
         const total = r1(items.reduce((s, i) => s + i.qty, 0))
-        return { producer, items, total }
+        const totalAmount = items.reduce((s, i) => s + i.amount, 0)
+        return { producer, items, total, totalAmount }
       })
       .sort((a, b) => b.total - a.total)
   }, [filtered])
 
   const totalQty = Math.round(filtered.reduce((a, t) => a + txQty(t), 0) * 10) / 10
+  const totalAmount = filtered.reduce((a, t) => a + txAmount(t), 0)
   const maxBar = producerRows.length > 0 ? Math.max(...producerRows.map(r => r.total)) : 1
 
   const s = {
@@ -131,7 +142,7 @@ export default function ShipmentAnalysisPage() {
     <AppShell>
       {/* ヘッダー */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-        <h2 style={{ fontSize: 15, fontWeight: 700 }}>📊 出荷分析 <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>（成立した取引のみ）</span></h2>
+        <h2 style={{ fontSize: 15, fontWeight: 700 }}>📊 出荷分析 <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>（成立した取引のみ{isProducer && product ? '／金額は自分の取引分のみ' : ''}）</span></h2>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <select value={rangeMode ? 'range' : 'single'} onChange={e => setRangeMode(e.target.value === 'range')} style={s.select}>
             <option value="single">単月</option>
@@ -159,6 +170,7 @@ export default function ShipmentAnalysisPage() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 12, marginBottom: 20 }}>
         {[
           { label: '総出荷数', value: totalQty.toLocaleString(), color: 'var(--accent)' },
+          { label: '総出荷金額', value: yen(totalAmount), color: 'var(--accent)' },
           { label: '成立取引数', value: `${filtered.length} 件`, color: 'var(--accent2)' },
           { label: '生産者数', value: `${producerRows.length} 名`, color: 'var(--warn)' },
         ].map(c => (
@@ -184,7 +196,8 @@ export default function ShipmentAnalysisPage() {
               <thead>
                 <tr style={{ background: 'var(--surface2)' }}>
                   <th style={s.th}>日付</th>
-                  <th style={{ ...s.th, textAlign: 'right' as const }}>合計</th>
+                  <th style={{ ...s.th, textAlign: 'right' as const }}>合計数</th>
+                  <th style={{ ...s.th, textAlign: 'right' as const }}>合計金額</th>
                   <th style={{ ...s.th, width: 80 }}></th>
                 </tr>
               </thead>
@@ -201,12 +214,14 @@ export default function ShipmentAnalysisPage() {
                       <tr key={g.date} style={{ cursor: 'pointer', background: open ? 'var(--surface2)' : undefined }} onClick={toggle}>
                         <td style={{ ...s.td, fontFamily: 'Space Mono,monospace', fontSize: 12, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{g.date}</td>
                         <td style={{ ...s.td, fontFamily: 'Space Mono,monospace', color: 'var(--accent)', fontWeight: 700, textAlign: 'right' as const }}>{g.total}</td>
+                        <td style={{ ...s.td, fontFamily: 'Space Mono,monospace', color: 'var(--accent)', fontWeight: 700, textAlign: 'right' as const }}>{yen(g.totalAmount)}</td>
                         <td style={{ ...s.td, textAlign: 'center' as const, color: 'var(--muted)', fontSize: 12 }}>{open ? '▲ 閉じる' : '▼ 詳細'}</td>
                       </tr>
                       {open && g.rows.map((r, i) => (
                         <tr key={`${g.date}-${i}`} style={{ background: 'var(--surface2)' }}>
                           <td style={{ ...s.td, paddingLeft: 28, fontSize: 12, color: 'var(--muted)' }}>{r.producer}　{r.product}</td>
                           <td style={{ ...s.td, fontFamily: 'Space Mono,monospace', fontSize: 12, color: 'var(--accent)', textAlign: 'right' as const }}>{r.qty}</td>
+                          <td style={{ ...s.td, fontFamily: 'Space Mono,monospace', fontSize: 12, color: 'var(--muted)', textAlign: 'right' as const }}>{yen(r.amount)}</td>
                           <td style={s.td}></td>
                         </tr>
                       ))}
@@ -226,13 +241,18 @@ export default function ShipmentAnalysisPage() {
                 <div key={r.producer} style={{ marginBottom: 24 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, display: 'flex', justifyContent: 'space-between' }}>
                     <span>{r.producer}</span>
-                    <span style={{ fontFamily: 'Space Mono,monospace', color: 'var(--muted)', fontSize: 12 }}>合計 {r.total.toLocaleString()}</span>
+                    <span style={{ fontFamily: 'Space Mono,monospace', color: 'var(--muted)', fontSize: 12 }}>
+                      合計 {r.total.toLocaleString()}　<span style={{ color: 'var(--accent)', fontWeight: 700 }}>{yen(r.totalAmount)}</span>
+                    </span>
                   </div>
-                  {r.items.map((item: { product: string; qty: number }) => (
+                  {r.items.map((item: { product: string; qty: number; amount: number }) => (
                     <div key={item.product} style={{ marginBottom: 8 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
                         <span style={{ color: 'var(--muted)' }}>{item.product}</span>
-                        <span style={{ fontFamily: 'Space Mono,monospace', color: 'var(--accent)', fontWeight: 700 }}>{item.qty}</span>
+                        <span style={{ fontFamily: 'Space Mono,monospace' }}>
+                          <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{item.qty}</span>
+                          <span style={{ color: 'var(--muted)', marginLeft: 8 }}>{yen(item.amount)}</span>
+                        </span>
                       </div>
                       <div style={{ background: 'var(--surface2)', borderRadius: 4, height: 10, overflow: 'hidden' }}>
                         <div style={{ width: `${(item.qty / maxBar) * 100}%`, height: '100%', background: 'var(--accent)', borderRadius: 4, transition: 'width .3s' }} />

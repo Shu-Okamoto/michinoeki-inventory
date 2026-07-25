@@ -16,13 +16,20 @@ export const maxDuration = 30
 
 // ロール別の情報統制：相手側の金額・手数料はレスポンスから除去する。
 //  生産者: 自分の受取額(満額)は見えるが、手数料・販売者請求は見えない
+//           他の生産者の取引（出荷分析の商品比較で取得する分）は数量のみで金額は見えない
 //  販売者: 自分の支払(請求)額は見えるが、生産者請求・手数料は見えない
 //  admin / 組合パートナー: すべて見える
-function redactByRole(t: any, role: string) {
+function redactByRole(t: any, role: string, myName = '') {
   if (hasOperationalAccess(role)) return t
   const c = { ...t }
   if (role === '生産者') {
     delete c.commission; delete c.commissionRate; delete c.sellerAmount
+    // 他人の取引は金額・単価を伏せる（数量のみ比較用に返す）
+    if (t.producer !== myName) {
+      delete c.producerAmount
+      delete c.amount; delete c.retailAmount; delete c.discountAmount; delete c.souzaiAmount
+      delete c.unitPrice; delete c.gradeAPrice; delete c.gradeBPrice; delete c.discountUnitPrice
+    }
   } else if (role === '販売者') {
     delete c.commission; delete c.commissionRate; delete c.producerAmount
     delete c.amount; delete c.retailAmount; delete c.discountAmount; delete c.souzaiAmount
@@ -79,7 +86,7 @@ export async function GET(req: NextRequest) {
     : role === '販売者' ? allInvoices.filter(i => i.kind === 'seller' && i.party === myName)
     : []
   return NextResponse.json({
-    transactions: transactions.map(t => redactByRole(t, role)),
+    transactions: transactions.map(t => redactByRole(t, role, myName)),
     invoices, // 組合は全件、生産者/販売者は自分宛てのみ
     me: { name: session.user?.name || '', role },
   })
