@@ -199,3 +199,23 @@ export async function deleteShipment(org: string, id: string): Promise<void> {
     await sql`DELETE FROM iwkagri_shipments WHERE org = ${org} AND id = ${id}`
   })
 }
+
+// 道の駅の名称変更に伴い、過去の納品・売上の納品先名を追従させる。
+// 同名の道の駅を別の組合員が持つ場合があるため、所有者の記録だけを対象にする。
+export async function renameRecordLocation(
+  org: string, owner: string, oldName: string, newName: string,
+): Promise<{ shipments: number; sales: number }> {
+  await ensureMigrated(org)
+  return withRetry(async () => {
+    const sql = getSql()
+    const shp = await sql`
+      UPDATE iwkagri_shipments SET location = ${newName}
+      WHERE org = ${org} AND location = ${oldName} AND producer = ${owner}
+    `
+    const sls = await sql`
+      UPDATE iwkagri_sales SET location = ${newName}
+      WHERE org = ${org} AND location = ${oldName} AND producer = ${owner}
+    `
+    return { shipments: shp.count ?? 0, sales: sls.count ?? 0 }
+  })
+}

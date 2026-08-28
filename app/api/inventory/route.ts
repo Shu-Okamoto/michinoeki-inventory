@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { kvGet, kvSet } from '@/lib/db'
-import { listSales, addSales, deleteSale, clearSales, listShipments, addShipment, deleteShipment } from '@/lib/records'
+import { listSales, addSales, deleteSale, clearSales, listShipments, addShipment, deleteShipment, renameRecordLocation } from '@/lib/records'
+import { renameTransactionLocation } from '@/lib/transactions'
 import { ORG, hashPassword, roleToView, isAdminRole, isPartnerRole, hasOperationalAccess } from '@/lib/users'
 import { sendSalesDigest } from '@/lib/salesmail'
 
@@ -34,6 +35,9 @@ async function productPrice(name: string, producer?: string): Promise<number> {
 }
 
 const KEYS = ['locations', 'products', 'shipments', 'sales', 'gmail_settings', 'producers', 'announcements', 'settings']
+
+// 自分用の商品・道の駅マスタを登録できるロール（登録した本人だけが使う）
+const MASTER_ROLES = new Set(['生産者', '販売者'])
 
 // 旧（ログインアカウントごと）データを共有領域へ一度だけ移行する
 async function migrateLegacy(legacyUserId?: string | null) {
@@ -83,12 +87,12 @@ export async function GET(req: NextRequest) {
   // 組合（admin/パートナー）は承認・精算のため全件を参照する。
   const allLocations = normLocations(locations as any[])
   const allProducts = (products as any[]) || []
-  const myLocations = role === '生産者'
-    ? allLocations.filter((l: any) => (l.producer || '') === myName)
-    : allLocations
-  const myProducts = role === '生産者'
-    ? allProducts.filter((p: any) => (p.producer || '') === myName || p.proposedBy === myName)
-    : allProducts
+  const myLocations = hasOperationalAccess(role)
+    ? allLocations
+    : allLocations.filter((l: any) => (l.producer || '') === myName)
+  const myProducts = hasOperationalAccess(role)
+    ? allProducts
+    : allProducts.filter((p: any) => (p.producer || '') === myName || p.proposedBy === myName)
   // 自分自身のマスタ情報（住所・振込先を含む）。請求書の発行者欄に自分の情報を表示するため本人にのみ返す
   const selfRaw = (producers as any[] || []).find((p: any) => p.name === myName)
   const self = selfRaw ? (({ passwordHash, ...rest }: any) => rest)(selfRaw) : undefined
@@ -128,25 +132,54 @@ export async function POST(req: NextRequest) {
 
   switch (action) {
     case 'add_location': {
-      // 道の駅の登録。生産者は自分の道の駅、組合は共通(ワークフローでも使用)。
-      if (role !== '生産者' && !hasOperationalAccess(role)) return NextResponse.json({ error: '権限がありません' }, { status: 403 })
+      // 道の駅の登録。登録した本人だけが使う個別マスタ（共通の道の駅はない）。
+      if (!MASTER_ROLES.has(role) && !hasOperationalAccess(role)) return NextResponse.json({ error: '権限がありません' }, { status: 403 })
       if (!payload.name) return NextResponse.json({ error: '名称が必要です' }, { status: 400 })
       const list = normLocations(await kvGet(ORG, 'locations') || [])
-      const producer = role === '生産者' ? (session.user?.name || '') : (payload.producer || '')
+      // 組合は対象の組合員を指定して登録できる。それ以外は自分名義。
+      const producer = hasOperationalAccess(role) ? (payload.producer || '') : (session.user?.name || '')
+      if (!producer) return NextResponse.json({ error: '利用する組合員が必要です' }, { status: 400 })
       if (!list.find((l: any) => l.name === payload.name && (l.producer || '') === producer)) {
         list.push({ id: uid(), name: payload.name, producer })
       }
       await kvSet(ORG, 'locations', list)
       return NextResponse.json({ ok: true })
     }
+    case 'update_location': {
+      // 道の駅の名称変更。過去の納品・売上・取引の納品先名も追従させる。
+      if (!MASTER_ROLES.has(role) && !hasOperationalAccess(role)) return NextResponse.json({ error: '権限がありません' }, { status: 403 })
+      const newName = String(payload.name || '').trim()
+      if (!newName) return NextResponse.json({ error: '名称が必要です' }, { status: 400 })
+      const me = session.user?.name || ''
+      const list = normLocations(await kvGet(ORG, 'locations') || [])
+      const target = list.find((l: any) => payload.id ? l.id === payload.id : l.name === payload.oldName)
+      if (!target) return NextResponse.json({ error: '道の駅が見つかりません' }, { status: 404 })
+      // 自分の道の駅のみ変更可（組合は全件可）
+      const owner = target.producer || ''
+      if (!hasOperationalAccess(role) && owner !== me) return NextResponse.json({ error: '権限がありません' }, { status: 403 })
+      const oldName = target.name
+      if (oldName === newName) return NextResponse.json({ ok: true })
+      // 同じ組合員が同名の道の駅を持たないようにする
+      if (list.find((l: any) => l !== target && l.name === newName && (l.producer || '') === owner)) {
+        return NextResponse.json({ error: '同じ名前の道の駅が既にあります' }, { status: 400 })
+      }
+      target.name = newName
+      await kvSet(ORG, 'locations', list)
+      // 過去データの納品先名を追従（所有者の記録だけを対象にし、同名の他人の道の駅は変更しない）
+      const [rec, tx] = await Promise.all([
+        renameRecordLocation(ORG, owner, oldName, newName),
+        renameTransactionLocation(ORG, owner, oldName, newName),
+      ])
+      return NextResponse.json({ ok: true, updated: { shipments: rec.shipments, sales: rec.sales, transactions: tx } })
+    }
     case 'remove_location': {
-      if (role !== '生産者' && !hasOperationalAccess(role)) return NextResponse.json({ error: '権限がありません' }, { status: 403 })
+      if (!MASTER_ROLES.has(role) && !hasOperationalAccess(role)) return NextResponse.json({ error: '権限がありません' }, { status: 403 })
       const me = session.user?.name || ''
       const list = normLocations(await kvGet(ORG, 'locations') || [])
       const filtered = list.filter((l: any) => {
         const hit = payload.id ? l.id === payload.id : l.name === payload.name
         if (!hit) return true
-        // 生産者は自分の道の駅のみ削除可
+        // 自分の道の駅のみ削除可（組合は全件可）
         if (!hasOperationalAccess(role) && (l.producer || '') !== me) return true
         return false
       })
