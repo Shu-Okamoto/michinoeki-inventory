@@ -7,13 +7,19 @@ import { getSql } from '@/lib/db'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
 
-// 接続文字列やホスト名・IPを伏せる
+// 接続文字列・ホスト名・IP・テナント識別子を伏せる。
+// このエンドポイントは認証不要で公開されるため、プロジェクト参照ID
+// （Supabase の postgres.<project-ref> 等）も外に出さない。
 function sanitize(msg: string): string {
   return msg
     .replace(/postgres(?:ql)?:\/\/[^\s]*/gi, 'postgres://***')
     .replace(/\/\/[^@\s/]*@/g, '//***@')
     .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '***')
-    .replace(/\b[\w.-]+\.(?:neon\.tech|supabase\.co|amazonaws\.com|vercel-storage\.com)\b/gi, '***')
+    .replace(/\b[\w.-]+\.(?:neon\.tech|supabase\.(?:co|com)|amazonaws\.com|vercel-storage\.com)\b/gi, '***')
+    // Supabase プーラーのユーザー名 postgres.<project-ref>
+    .replace(/\bpostgres\.[A-Za-z0-9_-]{8,}/g, 'postgres.***')
+    // "tenant or user not found" 系メッセージ内に残る識別子
+    .replace(/\b(tenant|user)[\s/]+\S+\s+not found/gi, '$1 *** not found')
     .slice(0, 300)
 }
 
