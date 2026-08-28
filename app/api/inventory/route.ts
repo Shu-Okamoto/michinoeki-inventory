@@ -79,10 +79,7 @@ export async function GET(req: NextRequest) {
   ])
 
   const role = (session.user as any)?.role || 'guest'
-  // 生産者は自分の納品・売上のみ閲覧可
   const myName = session.user?.name || ''
-  const shp = role === '生産者' ? (shipments as any[] || []).filter((x: any) => x.producer === myName) : (shipments || [])
-  const sls = role === '生産者' ? (sales as any[] || []).filter((x: any) => x.producer === myName) : (sales || [])
   // 商品・道の駅は登録した本人のものだけを扱う（共通マスタは持たない）。
   // 組合（admin/パートナー）は承認・精算のため全件を参照する。
   const allLocations = normLocations(locations as any[])
@@ -93,6 +90,16 @@ export async function GET(req: NextRequest) {
   const myProducts = hasOperationalAccess(role)
     ? allProducts
     : allProducts.filter((p: any) => (p.producer || '') === myName || p.proposedBy === myName)
+  // 納品・売上の閲覧範囲：生産者は自分が納品したもの、販売者は自分の道の駅のもの
+  const myLocationNames = new Set(myLocations.map((l: any) => l.name))
+  const scopeRecords = (list: any[]) => {
+    if (hasOperationalAccess(role)) return list
+    if (role === '生産者') return list.filter((x: any) => x.producer === myName)
+    if (role === '販売者') return list.filter((x: any) => myLocationNames.has(x.location))
+    return []
+  }
+  const shp = scopeRecords((shipments as any[]) || [])
+  const sls = scopeRecords((sales as any[]) || [])
   // 自分自身のマスタ情報（住所・振込先を含む）。請求書の発行者欄に自分の情報を表示するため本人にのみ返す
   const selfRaw = (producers as any[] || []).find((p: any) => p.name === myName)
   const self = selfRaw ? (({ passwordHash, ...rest }: any) => rest)(selfRaw) : undefined
@@ -348,10 +355,15 @@ export async function POST(req: NextRequest) {
     case 'add_sales': {
       // 売上(レジ通過)＝販売者・組合・生産者(自分名義のみ)
       if (role === 'guest') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
-      const salesProducer = role === '生産者' ? (session.user?.name || '') : (payload.producer || '')
       const priceMap = await productPriceMap()
+      // 納品実績から選ぶ画面では、明細ごとに納品先・生産者が異なりうる。
+      // 明細に指定がなければ従来どおり payload の値を使う。
       const recs = (payload.items || []).map((item: any) => ({
-        id: uid(), date: payload.date, location: payload.location, producer: salesProducer,
+        id: uid(), date: payload.date,
+        location: item.location || payload.location || '',
+        producer: role === '生産者'
+          ? (session.user?.name || '')
+          : (item.producer || payload.producer || ''),
         product: item.product, qty: Number(item.qty) || 0, method: payload.method || '手動',
         unitPrice: item.unitPrice !== undefined ? Number(item.unitPrice) || 0 : (priceMap[item.product] || 0),
       }))
