@@ -116,77 +116,119 @@ export function calcMoney(t: Pick<Transaction, 'type' | 'deliveryQty' | 'salesQt
   }
 }
 
+// スキーマのバージョン。DDLを変更したら +1 する。
+const SCHEMA_VERSION = 2
+
 let initPromise: Promise<void> | null = null
 function initTxTables(): Promise<void> {
   if (!initPromise) {
     initPromise = withRetry(async () => {
       const sql = getSql()
-      // 初期化DDLは1往復にまとめる（プーラー越しの往復遅延を避けるため）
+      // 初期化DDLは1往復にまとめる（プーラー越しの往復遅延を避けるため）。
+      // 移行済みかどうかを iwkagri_schema_version で判定し、済んでいれば
+      // DDLを一切実行しない（ALTER TABLE は空振りでも ACCESS EXCLUSIVE ロックを
+      // 取るため、コールドスタート毎に実行すると取引テーブルがロック待ちで詰まる）。
       await sql.unsafe(`
-        CREATE TABLE IF NOT EXISTS iwkagri_transactions (
-          id TEXT PRIMARY KEY,
-          org TEXT NOT NULL,
-          type TEXT NOT NULL DEFAULT '産直',
-          status TEXT NOT NULL DEFAULT 'shipped',
-          date TEXT NOT NULL DEFAULT '',
-          producer TEXT NOT NULL DEFAULT '',
-          seller TEXT NOT NULL DEFAULT '',
-          location TEXT NOT NULL DEFAULT '',
-          product TEXT NOT NULL DEFAULT '',
-          ship_qty INTEGER NOT NULL DEFAULT 0,
-          delivery_qty INTEGER NOT NULL DEFAULT 0,
-          sales_qty INTEGER NOT NULL DEFAULT 0,
-          unit_price INTEGER NOT NULL DEFAULT 0,
-          commission_rate NUMERIC NOT NULL DEFAULT 0,
-          invoice_id TEXT,
-          created_at TIMESTAMP DEFAULT NOW(),
+        CREATE TABLE IF NOT EXISTS iwkagri_schema_version (
+          id INT PRIMARY KEY,
+          version INT NOT NULL,
           updated_at TIMESTAMP DEFAULT NOW()
         );
-        CREATE INDEX IF NOT EXISTS idx_iwkagri_tx_org_status ON iwkagri_transactions (org, status);
-        CREATE INDEX IF NOT EXISTS idx_iwkagri_tx_org_date ON iwkagri_transactions (org, date);
-        CREATE INDEX IF NOT EXISTS idx_iwkagri_tx_invoice ON iwkagri_transactions (invoice_id);
-        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS settled_qty INTEGER;
-        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS carry_from_id TEXT;
-        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS retrieved_qty INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS souzai_qty INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discount_qty INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discount_unit_price INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discard_qty INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS grade_a_qty INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS grade_a_price INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS grade_b_qty INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS grade_b_price INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS confirmed_qty INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS producer_confirmed BOOLEAN NOT NULL DEFAULT false;
-        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS producer_confirmed_at TEXT;
-        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS unit TEXT;
-        ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS last_sales_date TEXT;
-        ALTER TABLE iwkagri_transactions ALTER COLUMN ship_qty TYPE NUMERIC USING ship_qty::NUMERIC;
-        ALTER TABLE iwkagri_transactions ALTER COLUMN delivery_qty TYPE NUMERIC USING delivery_qty::NUMERIC;
-        ALTER TABLE iwkagri_transactions ALTER COLUMN confirmed_qty TYPE NUMERIC USING confirmed_qty::NUMERIC;
-        ALTER TABLE iwkagri_transactions ALTER COLUMN grade_a_qty TYPE NUMERIC USING grade_a_qty::NUMERIC;
-        ALTER TABLE iwkagri_transactions ALTER COLUMN grade_b_qty TYPE NUMERIC USING grade_b_qty::NUMERIC;
-        ALTER TABLE iwkagri_transactions ALTER COLUMN sales_qty TYPE NUMERIC USING sales_qty::NUMERIC;
-        ALTER TABLE iwkagri_transactions ALTER COLUMN retrieved_qty TYPE NUMERIC USING retrieved_qty::NUMERIC;
-        ALTER TABLE iwkagri_transactions ALTER COLUMN souzai_qty TYPE NUMERIC USING souzai_qty::NUMERIC;
-        ALTER TABLE iwkagri_transactions ALTER COLUMN discount_qty TYPE NUMERIC USING discount_qty::NUMERIC;
-        ALTER TABLE iwkagri_transactions ALTER COLUMN discard_qty TYPE NUMERIC USING discard_qty::NUMERIC;
-        ALTER TABLE iwkagri_transactions ALTER COLUMN settled_qty TYPE NUMERIC USING settled_qty::NUMERIC;
-        CREATE TABLE IF NOT EXISTS iwkagri_invoices (
-          id TEXT PRIMARY KEY,
-          org TEXT NOT NULL,
-          period TEXT NOT NULL,
-          kind TEXT NOT NULL,
-          party TEXT NOT NULL DEFAULT '',
-          subtotal INTEGER NOT NULL DEFAULT 0,
-          commission INTEGER NOT NULL DEFAULT 0,
-          total INTEGER NOT NULL DEFAULT 0,
-          status TEXT NOT NULL DEFAULT 'issued',
-          created_at TIMESTAMP DEFAULT NOW()
-        );
-        CREATE INDEX IF NOT EXISTS idx_iwkagri_invoices_org_period ON iwkagri_invoices (org, period);
-        ALTER TABLE iwkagri_invoices ADD COLUMN IF NOT EXISTS transferred BOOLEAN NOT NULL DEFAULT false;
-        ALTER TABLE iwkagri_invoices ADD COLUMN IF NOT EXISTS transferred_at TEXT;
+        DO $iwk$
+        BEGIN
+          -- 移行済みなら何もしない（安価なSELECTのみ・ロックを取らない）
+          IF EXISTS (SELECT 1 FROM iwkagri_schema_version WHERE id = 1 AND version >= ${SCHEMA_VERSION}) THEN
+            RETURN;
+          END IF;
+          -- 複数インスタンスが同時にコールドスタートしても移行は1つだけ実行する
+          PERFORM pg_advisory_xact_lock(918273645);
+          IF EXISTS (SELECT 1 FROM iwkagri_schema_version WHERE id = 1 AND version >= ${SCHEMA_VERSION}) THEN
+            RETURN;
+          END IF;
+
+          CREATE TABLE IF NOT EXISTS iwkagri_transactions (
+            id TEXT PRIMARY KEY,
+            org TEXT NOT NULL,
+            type TEXT NOT NULL DEFAULT '産直',
+            status TEXT NOT NULL DEFAULT 'shipped',
+            date TEXT NOT NULL DEFAULT '',
+            producer TEXT NOT NULL DEFAULT '',
+            seller TEXT NOT NULL DEFAULT '',
+            location TEXT NOT NULL DEFAULT '',
+            product TEXT NOT NULL DEFAULT '',
+            ship_qty INTEGER NOT NULL DEFAULT 0,
+            delivery_qty INTEGER NOT NULL DEFAULT 0,
+            sales_qty INTEGER NOT NULL DEFAULT 0,
+            unit_price INTEGER NOT NULL DEFAULT 0,
+            commission_rate NUMERIC NOT NULL DEFAULT 0,
+            invoice_id TEXT,
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_iwkagri_tx_org_status ON iwkagri_transactions (org, status);
+          CREATE INDEX IF NOT EXISTS idx_iwkagri_tx_org_date ON iwkagri_transactions (org, date);
+          CREATE INDEX IF NOT EXISTS idx_iwkagri_tx_invoice ON iwkagri_transactions (invoice_id);
+          ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS settled_qty INTEGER;
+          ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS carry_from_id TEXT;
+          ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS retrieved_qty INTEGER NOT NULL DEFAULT 0;
+          ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS souzai_qty INTEGER NOT NULL DEFAULT 0;
+          ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discount_qty INTEGER NOT NULL DEFAULT 0;
+          ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discount_unit_price INTEGER NOT NULL DEFAULT 0;
+          ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS discard_qty INTEGER NOT NULL DEFAULT 0;
+          ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS grade_a_qty INTEGER NOT NULL DEFAULT 0;
+          ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS grade_a_price INTEGER NOT NULL DEFAULT 0;
+          ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS grade_b_qty INTEGER NOT NULL DEFAULT 0;
+          ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS grade_b_price INTEGER NOT NULL DEFAULT 0;
+          ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS confirmed_qty INTEGER NOT NULL DEFAULT 0;
+          ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS producer_confirmed BOOLEAN NOT NULL DEFAULT false;
+          ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS producer_confirmed_at TEXT;
+          ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS unit TEXT;
+          ALTER TABLE iwkagri_transactions ADD COLUMN IF NOT EXISTS last_sales_date TEXT;
+
+          -- 数量カラムは小数(kg等)を扱うため NUMERIC。まだ INTEGER のものだけ変換する
+          -- （変換は全行書き換えを伴うので、既に NUMERIC なら実行しない）
+          DECLARE
+            col TEXT;
+          BEGIN
+            FOREACH col IN ARRAY ARRAY[
+              'ship_qty','delivery_qty','confirmed_qty','grade_a_qty','grade_b_qty',
+              'sales_qty','retrieved_qty','souzai_qty','discount_qty','discard_qty','settled_qty'
+            ] LOOP
+              IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'iwkagri_transactions'
+                  AND column_name = col
+                  AND data_type <> 'numeric'
+              ) THEN
+                EXECUTE format(
+                  'ALTER TABLE iwkagri_transactions ALTER COLUMN %I TYPE NUMERIC USING %I::NUMERIC',
+                  col, col);
+              END IF;
+            END LOOP;
+          END;
+
+          CREATE TABLE IF NOT EXISTS iwkagri_invoices (
+            id TEXT PRIMARY KEY,
+            org TEXT NOT NULL,
+            period TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            party TEXT NOT NULL DEFAULT '',
+            subtotal INTEGER NOT NULL DEFAULT 0,
+            commission INTEGER NOT NULL DEFAULT 0,
+            total INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'issued',
+            created_at TIMESTAMP DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_iwkagri_invoices_org_period ON iwkagri_invoices (org, period);
+          ALTER TABLE iwkagri_invoices ADD COLUMN IF NOT EXISTS transferred BOOLEAN NOT NULL DEFAULT false;
+          ALTER TABLE iwkagri_invoices ADD COLUMN IF NOT EXISTS transferred_at TEXT;
+
+          INSERT INTO iwkagri_schema_version (id, version, updated_at)
+          VALUES (1, ${SCHEMA_VERSION}, NOW())
+          ON CONFLICT (id) DO UPDATE SET version = ${SCHEMA_VERSION}, updated_at = NOW();
+        END
+        $iwk$;
       `)
     }).catch(err => { initPromise = null; throw err })
   }
