@@ -63,17 +63,17 @@ export default function SettingsPage() {
           <div style={{display:'flex',gap:8,marginBottom:8,flexWrap:'wrap' as any}}>
             <input style={s.input} value={newLoc} onChange={e=>setNewLoc(e.target.value)} placeholder="道の駅名（例: 道の駅 富士川楽座）" />
             <select style={{...s.input,maxWidth:200}} value={newLocProducer} onChange={e=>setNewLocProducer(e.target.value)}>
-              <option value="">共通（ワークフローでも使用）</option>
-              {(data.producers||[]).filter((x:any)=>(x.role||'生産者')==='生産者'&&!x.disabled).map((x:any)=><option key={x.id} value={x.name}>{x.name} 専用</option>)}
+              <option value="">利用する組合員を選択</option>
+              {(data.producers||[]).filter((x:any)=>(x.role||'生産者')==='生産者'&&!x.disabled).map((x:any)=><option key={x.id} value={x.name}>{x.name}</option>)}
             </select>
-            <button style={s.btn} onClick={async()=>{if(!newLoc)return;await api('add_location',{name:newLoc,producer:newLocProducer});setNewLoc('');setNewLocProducer('');showToast('✅ 追加しました')}}>＋ 追加</button>
+            <button style={s.btn} onClick={async()=>{if(!newLoc)return;if(!newLocProducer){showToast('⚠️ 利用する組合員を選択してください');return}await api('add_location',{name:newLoc,producer:newLocProducer});setNewLoc('');setNewLocProducer('');showToast('✅ 追加しました')}}>＋ 追加</button>
           </div>
-          <p style={{fontSize:11,color:'var(--muted)',marginBottom:12}}>「共通」は全体で使え、産直/卸売ワークフローの納品先にもなります。生産者専用は、その生産者の納品先候補にのみ表示されます。</p>
+          <p style={{fontSize:11,color:'var(--muted)',marginBottom:12}}>道の駅は組合員ごとの登録です。ここで登録すると、その組合員の納品先候補にのみ表示されます（全体共通の道の駅はありません）。</p>
           {data.locations.length===0
             ? <p style={{fontSize:12,color:'var(--muted)'}}>まだ登録がありません</p>
             : data.locations.map((l:any) => (
               <div key={l.id || l.name} style={s.row}>
-                <span style={{flex:1,fontSize:13}}>📍 {l.name} {l.producer ? <span style={{fontSize:11,color:'var(--muted)'}}>（{l.producer} 専用）</span> : <span style={{fontSize:11,color:'var(--accent2)'}}>（共通）</span>}</span>
+                <span style={{flex:1,fontSize:13}}>📍 {l.name} {l.producer ? <span style={{fontSize:11,color:'var(--muted)'}}>（{l.producer}）</span> : <span style={{fontSize:11,color:'var(--warn)',fontWeight:700}}>（利用者未設定・どの組合員にも表示されません）</span>}</span>
                 <button style={s.delBtn} onClick={()=>api('remove_location',{id:l.id,name:l.name})}>削除</button>
               </div>
             ))

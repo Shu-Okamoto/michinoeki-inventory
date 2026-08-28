@@ -162,7 +162,8 @@ export default function DealsPage() {
                 {(master.products || []).filter((p: any) => {
                   if ((p.status || 'approved') !== 'approved') return false
                   const sel = isProducer ? myName : producer
-                  return !p.producer || !sel || p.producer === sel
+                  // 商品は登録した生産者のもののみ（共通商品は存在しない）
+                  return !sel || p.producer === sel
                 }).map((p: any) => <option key={p.id || p.name}>{p.name}</option>)}
               </select>
             </div>
@@ -170,7 +171,7 @@ export default function DealsPage() {
               <label style={s.label}>納品先（任意）</label>
               <select style={s.input} value={loc} onChange={e => setLoc(e.target.value)}>
                 <option value="">未指定</option>
-                {(master.locations || []).filter((l: any) => { const sel = isProducer ? myName : producer; return !l.producer || !sel || l.producer === sel }).map((l: any) => <option key={l.id} value={l.name}>{l.name}</option>)}
+                {(master.locations || []).filter((l: any) => { const sel = isProducer ? myName : producer; return !sel || l.producer === sel }).map((l: any) => <option key={l.id} value={l.name}>{l.name}</option>)}
               </select>
             </div>
             <div>
@@ -315,7 +316,7 @@ export default function DealsPage() {
                         <div><label style={s.miniLabel}>納品先</label>
                           <select style={{ ...s.miniInput, width: 140 }} value={a.location} onChange={e => { const n = [...arr]; n[i] = { ...a, location: e.target.value }; setDraft(t.id, 'allocs', n) }}>
                             <option value="">未指定</option>
-                            {(master.locations || []).filter((l: any) => !l.producer || l.producer === t.producer).map((l: any) => <option key={l.id} value={l.name}>{l.name}</option>)}
+                            {(master.locations || []).filter((l: any) => l.producer === t.producer).map((l: any) => <option key={l.id} value={l.name}>{l.name}</option>)}
                           </select></div>
                         <div><label style={s.miniLabel}>納品数</label><input style={s.miniInput} type="number" min="0" value={a.qty} onChange={e => { const n = [...arr]; n[i] = { ...a, qty: e.target.value }; setDraft(t.id, 'allocs', n) }} /></div>
                         {arr.length > 1 && <button style={s.btnDanger} onClick={() => setDraft(t.id, 'allocs', arr.filter((_: any, j: number) => j !== i))}>−</button>}

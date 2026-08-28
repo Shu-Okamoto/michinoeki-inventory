@@ -5,15 +5,12 @@ import { useEffect, useState } from 'react'
 const today = () => new Date().toISOString().slice(0,10)
 
 export default function SendPage() {
-  const [data, setData] = useState<any>({ locations:[], products:[], shipments:[], producers:[] })
-  const [producer, setProducer] = useState('')
+  const [data, setData] = useState<any>({ locations:[], products:[], shipments:[] })
   const [loc, setLoc] = useState(''); const [prod, setProd] = useState('')
   const [qty, setQty] = useState(''); const [date, setDate] = useState(today())
   const [toast, setToast] = useState('')
 
   useEffect(() => { fetch('/api/inventory').then(r=>r.json()).then(setData) }, [])
-  // 生産者は自分名義のみ。生産者欄を本人に固定。
-  useEffect(() => { if (data.me?.role === '生産者' && data.me?.name) setProducer(data.me.name) }, [data.me?.role, data.me?.name])
 
   async function api(action: string, payload: any) {
     await fetch('/api/inventory', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action,payload}) })
@@ -23,8 +20,9 @@ export default function SendPage() {
   function showToast(m: string) { setToast(m); setTimeout(()=>setToast(''),2500) }
 
   async function addShipment() {
-    if (!producer||!loc||!prod||!qty||!date) { showToast('⚠️ すべての項目を入力してください'); return }
-    await api('add_shipment', { date, producer, location:loc, product:prod, qty:Number(qty) })
+    if (!loc||!prod||!qty||!date) { showToast('⚠️ すべての項目を入力してください'); return }
+    // 生産者はログインユーザー本人（サーバー側で決定）
+    await api('add_shipment', { date, location:loc, product:prod, qty:Number(qty) })
     setQty(''); showToast(`✅ ${loc} に ${prod} を ${qty}個 納品登録しました`)
   }
 
@@ -40,17 +38,25 @@ export default function SendPage() {
   return (
     <AppShell>
       <div style={s.box}>
-        <h2 style={{fontSize:14,fontWeight:700,marginBottom:16}}>納品数入力</h2>
+        <h2 style={{fontSize:14,fontWeight:700,marginBottom:4}}>納品数入力</h2>
+        <p style={{fontSize:11,color:'var(--muted)',marginBottom:16}}>
+          納品者は {data.me?.name || 'ログイン中のユーザー'} さんです。道の駅・商品は自分が登録したものだけが表示されます。
+        </p>
+        {(data.me?.role === '生産者' && ((data.locations||[]).length === 0 || (data.products||[]).length === 0)) && (
+          <div style={{background:'#FCF6E8',border:'1px solid var(--warn)',borderRadius:10,padding:'12px 14px',fontSize:12,marginBottom:16}}>
+            {(data.locations||[]).length === 0 && <div>🏪 納品先の道の駅がまだ登録されていません。</div>}
+            {(data.products||[]).length === 0 && <div>🌱 商品がまだ登録されていません。</div>}
+            <div style={{marginTop:6}}>
+              「<a href="/master" style={{color:'var(--accent)',fontWeight:700}}>🌱 商品・道の駅 登録</a>」から登録してください。
+            </div>
+          </div>
+        )}
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:16}}>
           {[
-            ['組合員（生産者）', data.me?.role==='生産者'
-              ? <input style={{...s.input,opacity:.7}} value={producer} disabled />
-              : <select style={s.input} value={producer} onChange={e=>setProducer(e.target.value)}>
-              <option value="">選択</option>{(data.producers||[]).filter((p:any)=>(p.role||'生産者')==='生産者'&&!p.disabled).map((p:any)=><option key={p.id} value={p.name}>{p.name}</option>)}</select>],
             ['納品先（道の駅）', <select style={s.input} value={loc} onChange={e=>setLoc(e.target.value)}>
-              <option value="">選択</option>{(data.locations||[]).filter((l:any)=>!l.producer || !producer || l.producer===producer).map((l:any)=><option key={l.id} value={l.name}>{l.name}</option>)}</select>],
+              <option value="">選択</option>{(data.locations||[]).map((l:any)=><option key={l.id} value={l.name}>{l.name}</option>)}</select>],
             ['商品', <select style={s.input} value={prod} onChange={e=>setProd(e.target.value)}>
-              <option value="">選択</option>{data.products.filter((p:any)=>(p.status||'approved')==='approved' && (!p.producer || !producer || p.producer===producer)).map((p:any)=><option key={p.id || p.name}>{p.name}</option>)}</select>],
+              <option value="">選択</option>{(data.products||[]).filter((p:any)=>(p.status||'approved')==='approved').map((p:any)=><option key={p.id || p.name}>{p.name}</option>)}</select>],
             ['個数', <input style={s.input} type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)} placeholder="20" />],
             ['日付', <input style={s.input} type="date" value={date} onChange={e=>setDate(e.target.value)} />],
           ].map(([label, ctrl], i) => (

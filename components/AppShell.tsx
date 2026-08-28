@@ -56,6 +56,7 @@ function groupsForView(view: View) {
     { title: 'お知らせ', items: [ITEMS.news] },
     { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals, ITEMS.myInvoices] },
     { title: '📦 在庫管理ツール', items: [ITEMS.sales, ITEMS.history] },
+    { title: '⚙️ マスタ登録', items: [ITEMS.master] },
   ]
   if (view === 'producer') return [
     { title: 'お知らせ', items: [ITEMS.news] },

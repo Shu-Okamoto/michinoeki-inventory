@@ -802,3 +802,20 @@ export async function updateInvoice(org: string, id: string, fields: { subtotal?
       WHERE org = ${org} AND id = ${id}`
   })
 }
+
+// 道の駅の名称変更に伴い、取引の納品先名を追従させる。
+// 同名の道の駅を別の組合員が持つ場合があるため、所有者が関わる取引だけを対象にする。
+export async function renameTransactionLocation(
+  org: string, owner: string, oldName: string, newName: string,
+): Promise<number> {
+  await initTxTables()
+  return withRetry(async () => {
+    const sql = getSql()
+    const res = await sql`
+      UPDATE iwkagri_transactions SET location = ${newName}, updated_at = NOW()
+      WHERE org = ${org} AND location = ${oldName}
+        AND (producer = ${owner} OR seller = ${owner})
+    `
+    return res.count ?? 0
+  })
+}

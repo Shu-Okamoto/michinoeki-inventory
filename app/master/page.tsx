@@ -10,6 +10,8 @@ export default function MasterPage() {
   const [pName, setPName] = useState(''); const [pUnit, setPUnit] = useState(''); const [pPrice, setPPrice] = useState('')
   // 道の駅
   const [lName, setLName] = useState('')
+  const [editingLoc, setEditingLoc] = useState<string | null>(null)
+  const [editLocName, setEditLocName] = useState('')
 
   function refresh() { fetch('/api/inventory').then(r => r.json()).then(setData) }
   useEffect(() => { refresh() }, [])
@@ -23,8 +25,9 @@ export default function MasterPage() {
   }
 
   const me = data.me?.name || ''
+  // 商品・道の駅は登録した本人のものだけ（共通マスタは持たない）
   const myProducts = (data.products || []).filter((p: any) => p.producer === me || p.proposedBy === me)
-  const myLocations = (data.locations || []).filter((l: any) => (l.producer || '') === me || !l.producer)
+  const myLocations = (data.locations || []).filter((l: any) => (l.producer || '') === me)
 
   async function proposeProduct() {
     if (!pName) { showToast('⚠️ 商品名を入力してください'); return }
@@ -36,6 +39,24 @@ export default function MasterPage() {
     const j = await api('add_location', { name: lName })
     if (j?.ok) { setLName(''); showToast('✅ 道の駅を登録しました') }
   }
+  function startEditLocation(l: any) { setEditingLoc(l.id || l.name); setEditLocName(l.name) }
+  async function saveLocation(l: any) {
+    const name = editLocName.trim()
+    if (!name) { showToast('⚠️ 道の駅名を入力してください'); return }
+    if (name === l.name) { setEditingLoc(null); return }
+    if (!confirm(`「${l.name}」を「${name}」に変更します。\n過去の納品・売上・取引の納品先名もあわせて変更されます。\nよろしいですか？`)) return
+    const j = await api('update_location', { id: l.id, oldName: l.name, name })
+    if (j?.ok) {
+      setEditingLoc(null)
+      const u = j.updated
+      showToast(`✅ 道の駅名を変更しました${u ? `（過去データ ${(u.shipments || 0) + (u.sales || 0) + (u.transactions || 0)} 件も更新）` : ''}`)
+    }
+  }
+  async function removeLocation(l: any) {
+    if (!confirm(`「${l.name}」を削除します。\n過去の納品・売上の記録は残りますが、今後の納品先として選べなくなります。\nよろしいですか？`)) return
+    const j = await api('remove_location', { id: l.id, name: l.name })
+    if (j?.ok) showToast('🗑️ 道の駅を削除しました')
+  }
 
   const s = {
     box: { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, marginBottom: 20 } as any,
@@ -43,6 +64,8 @@ export default function MasterPage() {
     btn: { background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 13, fontWeight: 700, cursor: 'pointer' } as any,
     chip: { fontSize: 12, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 999, padding: '4px 10px', display: 'inline-flex', gap: 6, alignItems: 'center' } as any,
     del: { border: 'none', background: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 13 } as any,
+    btnGhost: { background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 12px', fontSize: 12, cursor: 'pointer' } as any,
+    btnDanger: { background: '#FBE0DE', color: 'var(--danger)', border: '1px solid var(--danger)', borderRadius: 8, padding: '6px 12px', fontSize: 12, cursor: 'pointer' } as any,
   }
 
   return (
@@ -76,19 +99,39 @@ export default function MasterPage() {
       {/* 道の駅マスタ */}
       <div style={s.box}>
         <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>🏪 道の駅マスタ（自分の納品先）</h2>
-        <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12 }}>自分が納品する道の駅を登録できます。「共通」は組合が登録した全体用の道の駅です。</p>
+        <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12 }}>自分が納品する道の駅を登録します。ここで登録した道の駅は自分専用で、他の組合員には表示されません。</p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
           <input style={{ ...s.input, maxWidth: 280 }} value={lName} onChange={e => setLName(e.target.value)} placeholder="道の駅名（例: 道の駅 ○○）" />
           <button style={s.btn} onClick={addLocation}>登録する</button>
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {myLocations.length === 0 && <p style={{ fontSize: 12, color: 'var(--muted)' }}>まだ登録がありません</p>}
-          {myLocations.map((l: any) => (
-            <span key={l.id || l.name} style={s.chip}>
-              🏪 {l.name}{l.producer ? '' : '（共通）'}
-              {(l.producer || '') === me && l.producer && <button style={s.del} onClick={() => api('remove_location', { id: l.id, name: l.name })}>×</button>}
-            </span>
-          ))}
+          {myLocations.map((l: any) => {
+            const editing = editingLoc === (l.id || l.name)
+            return (
+              <div key={l.id || l.name} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {editing ? (
+                  <>
+                    <input
+                      style={{ ...s.input, maxWidth: 280 }}
+                      value={editLocName}
+                      onChange={e => setEditLocName(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') saveLocation(l) }}
+                      autoFocus
+                    />
+                    <button style={s.btn} onClick={() => saveLocation(l)}>保存</button>
+                    <button style={s.btnGhost} onClick={() => setEditingLoc(null)}>キャンセル</button>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ ...s.chip, fontSize: 13 }}>🏪 {l.name}</span>
+                    <button style={s.btnGhost} onClick={() => startEditLocation(l)}>✏️ 名称変更</button>
+                    <button style={s.btnDanger} onClick={() => removeLocation(l)}>🗑️ 削除</button>
+                  </>
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
 
