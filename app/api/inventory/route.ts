@@ -79,12 +79,22 @@ export async function GET(req: NextRequest) {
   const myName = session.user?.name || ''
   const shp = role === '生産者' ? (shipments as any[] || []).filter((x: any) => x.producer === myName) : (shipments || [])
   const sls = role === '生産者' ? (sales as any[] || []).filter((x: any) => x.producer === myName) : (sales || [])
+  // 商品・道の駅は登録した本人のものだけを扱う（共通マスタは持たない）。
+  // 組合（admin/パートナー）は承認・精算のため全件を参照する。
+  const allLocations = normLocations(locations as any[])
+  const allProducts = (products as any[]) || []
+  const myLocations = role === '生産者'
+    ? allLocations.filter((l: any) => (l.producer || '') === myName)
+    : allLocations
+  const myProducts = role === '生産者'
+    ? allProducts.filter((p: any) => (p.producer || '') === myName || p.proposedBy === myName)
+    : allProducts
   // 自分自身のマスタ情報（住所・振込先を含む）。請求書の発行者欄に自分の情報を表示するため本人にのみ返す
   const selfRaw = (producers as any[] || []).find((p: any) => p.name === myName)
   const self = selfRaw ? (({ passwordHash, ...rest }: any) => rest)(selfRaw) : undefined
   return NextResponse.json({
-    locations: normLocations(locations as any[]),
-    products: products || [],
+    locations: myLocations,
+    products: myProducts,
     shipments: shp,
     sales: sls,
     gmailSettings: gmailSettings || { labelId: '', labelName: '', autoFetch: false },
@@ -291,8 +301,8 @@ export async function POST(req: NextRequest) {
     case 'add_shipment': {
       // 納品＝生産者または管理者
       if (role === '販売者') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
-      // 生産者は自分名義のみ登録可
-      const shpProducer = role === '生産者' ? (session.user?.name || '') : (payload.producer || '')
+      // 納品はログインしている本人名義で登録する（画面に生産者の選択はない）
+      const shpProducer = session.user?.name || ''
       const unitPrice = payload.unitPrice !== undefined ? Number(payload.unitPrice) || 0 : await productPrice(payload.product, shpProducer)
       await addShipment(ORG, { id: uid(), date: payload.date, location: payload.location, producer: shpProducer, product: payload.product, qty: Number(payload.qty) || 0, unitPrice })
       return NextResponse.json({ ok: true })

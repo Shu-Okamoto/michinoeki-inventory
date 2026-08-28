@@ -23,8 +23,9 @@ export default function MasterPage() {
   }
 
   const me = data.me?.name || ''
+  // 商品・道の駅は登録した本人のものだけ（共通マスタは持たない）
   const myProducts = (data.products || []).filter((p: any) => p.producer === me || p.proposedBy === me)
-  const myLocations = (data.locations || []).filter((l: any) => (l.producer || '') === me || !l.producer)
+  const myLocations = (data.locations || []).filter((l: any) => (l.producer || '') === me)
 
   async function proposeProduct() {
     if (!pName) { showToast('⚠️ 商品名を入力してください'); return }
@@ -76,7 +77,7 @@ export default function MasterPage() {
       {/* 道の駅マスタ */}
       <div style={s.box}>
         <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>🏪 道の駅マスタ（自分の納品先）</h2>
-        <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12 }}>自分が納品する道の駅を登録できます。「共通」は組合が登録した全体用の道の駅です。</p>
+        <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12 }}>自分が納品する道の駅を登録します。ここで登録した道の駅は自分専用で、他の組合員には表示されません。</p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
           <input style={{ ...s.input, maxWidth: 280 }} value={lName} onChange={e => setLName(e.target.value)} placeholder="道の駅名（例: 道の駅 ○○）" />
           <button style={s.btn} onClick={addLocation}>登録する</button>
@@ -85,8 +86,8 @@ export default function MasterPage() {
           {myLocations.length === 0 && <p style={{ fontSize: 12, color: 'var(--muted)' }}>まだ登録がありません</p>}
           {myLocations.map((l: any) => (
             <span key={l.id || l.name} style={s.chip}>
-              🏪 {l.name}{l.producer ? '' : '（共通）'}
-              {(l.producer || '') === me && l.producer && <button style={s.del} onClick={() => api('remove_location', { id: l.id, name: l.name })}>×</button>}
+              🏪 {l.name}
+              <button style={s.del} onClick={() => api('remove_location', { id: l.id, name: l.name })}>×</button>
             </span>
           ))}
         </div>
