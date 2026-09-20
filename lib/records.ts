@@ -14,7 +14,9 @@ export interface SaleRecord {
   method: string
   messageId?: string
   unitPrice?: number   // 単価（円, snapshot）
-  amount?: number      // 金額 = qty × unitPrice（読み取り時に算出）
+  amount?: number      // 売上金額 = qty × unitPrice（読み取り時に算出）
+  rate?: number        // 掛け率（道の駅ごとの取り分, snapshot）。未設定の旧データは null
+  revenue?: number     // 収益 = amount × rate（読み取り時に算出。rate未設定なら amount と同額）
 }
 
 export interface ShipmentRecord {
@@ -64,6 +66,8 @@ function initRecordTables(): Promise<void> {
         );
         CREATE INDEX IF NOT EXISTS idx_iwkagri_shipments_org ON iwkagri_shipments (org);
         ALTER TABLE iwkagri_sales ADD COLUMN IF NOT EXISTS unit_price INTEGER NOT NULL DEFAULT 0;
+        -- 掛け率は売上登録時にスナップショットする（後から道の駅の掛け率を変えても過去の収益は変わらない）
+        ALTER TABLE iwkagri_sales ADD COLUMN IF NOT EXISTS rate NUMERIC;
         ALTER TABLE iwkagri_shipments ADD COLUMN IF NOT EXISTS unit_price INTEGER NOT NULL DEFAULT 0;
       `)
     }).catch(err => { initPromise = null; throw err })
@@ -79,11 +83,12 @@ async function rawInsertSales(org: string, recs: SaleRecord[]): Promise<void> {
     id: r.id, org, date: r.date || '', location: r.location || '', producer: r.producer || '',
     product: r.product || '', qty: Number(r.qty) || 0, method: r.method || '手動', message_id: r.messageId ?? null,
     unit_price: Number(r.unitPrice) || 0,
+    rate: r.rate == null ? null : Number(r.rate),
   }))
   await withRetry(async () => {
     const sql = getSql()
     await sql`
-      INSERT INTO iwkagri_sales ${sql(rows, 'id', 'org', 'date', 'location', 'producer', 'product', 'qty', 'method', 'message_id', 'unit_price')}
+      INSERT INTO iwkagri_sales ${sql(rows, 'id', 'org', 'date', 'location', 'producer', 'product', 'qty', 'method', 'message_id', 'unit_price', 'rate')}
       ON CONFLICT (id) DO NOTHING
     `
   })
@@ -128,7 +133,15 @@ async function ensureMigrated(org: string): Promise<void> {
 function rowToSale(r: any): SaleRecord {
   const qty = Number(r.qty)
   const unitPrice = Number(r.unit_price) || 0
-  const rec: SaleRecord = { id: r.id, date: r.date, location: r.location, producer: r.producer, product: r.product, qty, method: r.method, unitPrice, amount: qty * unitPrice }
+  const amount = qty * unitPrice
+  // 掛け率が未設定の旧データは収益＝売上として扱う（呼び出し側で現在の掛け率を補える）
+  const rate = r.rate == null ? undefined : Number(r.rate)
+  const rec: SaleRecord = {
+    id: r.id, date: r.date, location: r.location, producer: r.producer, product: r.product,
+    qty, method: r.method, unitPrice, amount,
+    revenue: Math.round(amount * (rate ?? 1)),
+  }
+  if (rate != null) rec.rate = rate
   if (r.message_id != null) rec.messageId = r.message_id
   return rec
 }

@@ -18,6 +18,11 @@ export default function HistoryPage() {
 
   const sales: any[] = data.sales || []
   const unitOf = (name: string): string => (data.products || []).find((p: any) => p.name === name)?.unit || '点'
+  // 掛け率・収益はサーバーが売上レコードに付けて返す（登録時のスナップショット。
+  // 旧データは現在の道の駅の掛け率で補完され rateEstimated が立つ）
+  const rateOf = (s: any): number => Number(s.rate ?? 1)
+  const revenueOf = (s: any): number =>
+    s.revenue != null ? Number(s.revenue) : Math.round((Number(s.amount) || 0) * rateOf(s))
 
   // データのある月（新しい順）。初期表示は最新の月。
   const months = useMemo(() => {
@@ -55,22 +60,25 @@ export default function HistoryPage() {
 
   // 納品先ごとの内訳（その月の全体像を見るため）
   const byLocation = useMemo(() => {
-    const map = new Map<string, { location: string; count: number; qty: number; amount: number }>()
+    const map = new Map<string, { location: string; count: number; qty: number; amount: number; revenue: number; rates: Set<number> }>()
     for (const s of monthSales) {
       const k = s.location || '—'
-      if (!map.has(k)) map.set(k, { location: k, count: 0, qty: 0, amount: 0 })
+      if (!map.has(k)) map.set(k, { location: k, count: 0, qty: 0, amount: 0, revenue: 0, rates: new Set() })
       const hit = map.get(k)!
       hit.count += 1
       hit.qty += Number(s.qty) || 0
       hit.amount += Number(s.amount) || 0
+      hit.revenue += revenueOf(s)
+      hit.rates.add(rateOf(s))
     }
     return Array.from(map.values())
-      .map(x => ({ ...x, qty: r1(x.qty) }))
+      .map(x => ({ ...x, qty: r1(x.qty), rateLabel: x.rates.size === 1 ? String([...x.rates][0]) : '複数' }))
       .sort((a, b) => b.amount - a.amount)
   }, [monthSales])
 
   const totalQty = r1(filtered.reduce((a, s) => a + (Number(s.qty) || 0), 0))
   const totalAmount = filtered.reduce((a, s) => a + (Number(s.amount) || 0), 0)
+  const totalRevenue = filtered.reduce((a, s) => a + revenueOf(s), 0)
 
   async function deleteSale(id: string) {
     if (!confirm('この売上記録を削除しますか？')) return
@@ -128,7 +136,11 @@ export default function HistoryPage() {
         </div>
         <div style={s.card}>
           <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>売上金額 合計</div>
-          <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Space Mono,monospace', color: 'var(--accent)' }}>{yen(totalAmount)}</div>
+          <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Space Mono,monospace', color: 'var(--accent2)' }}>{yen(totalAmount)}</div>
+        </div>
+        <div style={s.card}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>収益 合計（掛け率適用後）</div>
+          <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'Space Mono,monospace', color: 'var(--accent)' }}>{yen(totalRevenue)}</div>
         </div>
       </div>
 
@@ -143,7 +155,9 @@ export default function HistoryPage() {
               <th style={s.th}>納品先</th>
               <th style={{ ...s.th, textAlign: 'right' }}>件数</th>
               <th style={{ ...s.th, textAlign: 'right' }}>レジ通過数</th>
+              <th style={{ ...s.th, textAlign: 'right' }}>掛け率</th>
               <th style={{ ...s.th, textAlign: 'right' }}>売上金額</th>
+              <th style={{ ...s.th, textAlign: 'right' }}>収益</th>
               <th style={{ ...s.th, width: 60 }}></th>
             </tr></thead>
             <tbody>
@@ -152,7 +166,9 @@ export default function HistoryPage() {
                   <td style={{ ...s.td, color: 'var(--accent2)', fontWeight: 600 }}>{b.location}</td>
                   <td style={s.tdr}>{b.count}</td>
                   <td style={s.tdr}>{b.qty.toLocaleString()}</td>
-                  <td style={{ ...s.tdr, fontWeight: 700, color: 'var(--accent)' }}>{yen(b.amount)}</td>
+                  <td style={{ ...s.tdr, color: 'var(--muted)' }}>{b.rateLabel}</td>
+                  <td style={{ ...s.tdr, color: 'var(--accent2)' }}>{yen(b.amount)}</td>
+                  <td style={{ ...s.tdr, fontWeight: 700, color: 'var(--accent)' }}>{yen(b.revenue)}</td>
                   <td style={{ ...s.td, textAlign: 'right' }}>
                     <button
                       onClick={() => setLoc(b.location)}
@@ -170,7 +186,7 @@ export default function HistoryPage() {
       <div style={{ border: '1px solid var(--border)', borderRadius: 12, overflow: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead><tr style={{ background: 'var(--surface2)' }}>
-            {['日付', '生産者', '納品先', '商品', 'レジ通過数', '単価', '金額', '入力方法', ''].map(h => <th key={h} style={s.th}>{h}</th>)}
+            {['日付', '生産者', '納品先', '商品', 'レジ通過数', '単価', '売上金額', '掛け率', '収益', '入力方法', ''].map(h => <th key={h} style={s.th}>{h}</th>)}
           </tr></thead>
           <tbody>
             {filtered.slice(0, 300).map((s2: any) => (
@@ -181,18 +197,27 @@ export default function HistoryPage() {
                 <td style={s.td}>{s2.product}</td>
                 <td style={{ ...s.td, fontFamily: 'Space Mono,monospace', color: 'var(--accent)' }}>{s2.qty}{unitOf(s2.product)}</td>
                 <td style={{ ...s.td, fontFamily: 'Space Mono,monospace', color: 'var(--muted)' }}>{Number(s2.unitPrice) > 0 ? yen(s2.unitPrice) : '—'}</td>
-                <td style={{ ...s.td, fontFamily: 'Space Mono,monospace', color: 'var(--text)' }}>{Number(s2.amount) > 0 ? yen(s2.amount) : '—'}</td>
+                <td style={{ ...s.td, fontFamily: 'Space Mono,monospace', color: 'var(--accent2)' }}>{Number(s2.amount) > 0 ? yen(s2.amount) : '—'}</td>
+                <td style={{ ...s.td, fontFamily: 'Space Mono,monospace', color: 'var(--muted)' }}>
+                  {rateOf(s2)}{s2.rateEstimated && <span title="登録時の掛け率が記録されていないため、現在の設定で計算しています" style={{ color: 'var(--warn)' }}>*</span>}
+                </td>
+                <td style={{ ...s.td, fontFamily: 'Space Mono,monospace', color: 'var(--accent)', fontWeight: 700 }}>{revenueOf(s2) > 0 ? yen(revenueOf(s2)) : '—'}</td>
                 <td style={s.td}><span style={{ background: 'var(--surface2)', color: 'var(--muted)', padding: '2px 8px', borderRadius: 4, fontSize: 11 }}>{s2.method || '手動'}</span></td>
                 <td style={s.td}><button style={s.delBtn} onClick={() => deleteSale(s2.id)}>削除</button></td>
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={9} style={{ ...s.td, textAlign: 'center', color: 'var(--muted)', padding: 32 }}>
+              <tr><td colSpan={11} style={{ ...s.td, textAlign: 'center', color: 'var(--muted)', padding: 32 }}>
                 {sales.length === 0 ? '記録がありません' : `${periodLabel}${loc === ALL ? '' : `・${loc}`} の記録はありません`}
               </td></tr>
             )}
           </tbody>
         </table>
+        {filtered.some((x: any) => x.rateEstimated) && (
+          <div style={{ padding: '10px 16px', fontSize: 11, color: 'var(--muted)', borderTop: '1px solid var(--border)' }}>
+            <span style={{ color: 'var(--warn)' }}>*</span> は掛け率の設定前に登録された記録です。現在の道の駅の掛け率で収益を計算しています。
+          </div>
+        )}
         {filtered.length > 300 && (
           <div style={{ padding: '10px 16px', fontSize: 11, color: 'var(--muted)', borderTop: '1px solid var(--border)' }}>
             新しい順に300件まで表示しています（該当 {filtered.length} 件）。月や納品先で絞り込んでください。

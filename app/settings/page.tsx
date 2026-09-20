@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 
 export default function SettingsPage() {
   const [data, setData] = useState<any>({ locations:[], products:[], settings:{} })
-  const [newLoc, setNewLoc] = useState(''); const [newLocProducer, setNewLocProducer] = useState(''); const [newProd, setNewProd] = useState(''); const [newUnit, setNewUnit] = useState(''); const [newPrice, setNewPrice] = useState(''); const [newProducer, setNewProducer] = useState('')
+  const [newLoc, setNewLoc] = useState(''); const [newLocProducer, setNewLocProducer] = useState(''); const [newLocRate, setNewLocRate] = useState('1'); const [newProd, setNewProd] = useState(''); const [newUnit, setNewUnit] = useState(''); const [newPrice, setNewPrice] = useState(''); const [newProducer, setNewProducer] = useState('')
   const [kyohaiUrl, setKyohaiUrl] = useState('')
   const [commissionRate, setCommissionRate] = useState('')
   const [priceEdits, setPriceEdits] = useState<Record<string, string>>({})
@@ -66,14 +66,22 @@ export default function SettingsPage() {
               <option value="">利用する組合員を選択</option>
               {(data.producers||[]).filter((x:any)=>(x.role||'生産者')==='生産者'&&!x.disabled).map((x:any)=><option key={x.id} value={x.name}>{x.name}</option>)}
             </select>
-            <button style={s.btn} onClick={async()=>{if(!newLoc)return;if(!newLocProducer){showToast('⚠️ 利用する組合員を選択してください');return}await api('add_location',{name:newLoc,producer:newLocProducer});setNewLoc('');setNewLocProducer('');showToast('✅ 追加しました')}}>＋ 追加</button>
+            <input style={{...s.input,maxWidth:110}} type="number" min="0.01" max="1" step="0.01" value={newLocRate} onChange={e=>setNewLocRate(e.target.value)} placeholder="掛け率 1" title="掛け率（例: 0.7）" />
+            <button style={s.btn} onClick={async()=>{if(!newLoc)return;if(!newLocProducer){showToast('⚠️ 利用する組合員を選択してください');return}await api('add_location',{name:newLoc,producer:newLocProducer,rate:Number(newLocRate)||1});setNewLoc('');setNewLocProducer('');setNewLocRate('1');showToast('✅ 追加しました')}}>＋ 追加</button>
           </div>
-          <p style={{fontSize:11,color:'var(--muted)',marginBottom:12}}>道の駅は組合員ごとの登録です。ここで登録すると、その組合員の納品先候補にのみ表示されます（全体共通の道の駅はありません）。</p>
+          <p style={{fontSize:11,color:'var(--muted)',marginBottom:12}}>道の駅は組合員ごとの登録です。ここで登録すると、その組合員の納品先候補にのみ表示されます（全体共通の道の駅はありません）。<b>掛け率</b>は売上のうち組合員の収益になる割合で、例えば 0.7 なら 460円の商品が売れたとき収益は 322円です（未設定は 1 = 収益＝売上）。</p>
           {data.locations.length===0
             ? <p style={{fontSize:12,color:'var(--muted)'}}>まだ登録がありません</p>
             : data.locations.map((l:any) => (
               <div key={l.id || l.name} style={s.row}>
                 <span style={{flex:1,fontSize:13}}>📍 {l.name} {l.producer ? <span style={{fontSize:11,color:'var(--muted)'}}>（{l.producer}）</span> : <span style={{fontSize:11,color:'var(--warn)',fontWeight:700}}>（利用者未設定・どの組合員にも表示されません）</span>}</span>
+                <span style={{fontSize:11,color:'var(--muted)',marginRight:6}}>掛け率</span>
+                <input
+                  style={{...s.input,width:80,marginRight:8}}
+                  type="number" min="0.01" max="1" step="0.01"
+                  defaultValue={String(l.rate ?? 1)}
+                  onBlur={async e=>{const v=Number(e.target.value);if(!Number.isFinite(v)||v<=0||v>1){showToast('⚠️ 掛け率は0より大きく1以下で入力してください');return}if(v===Number(l.rate ?? 1))return;await api('update_location',{id:l.id,oldName:l.name,rate:v});showToast('✅ 掛け率を更新しました')}}
+                />
                 <button style={s.delBtn} onClick={()=>api('remove_location',{id:l.id,name:l.name})}>削除</button>
               </div>
             ))

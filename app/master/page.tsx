@@ -10,8 +10,10 @@ export default function MasterPage() {
   const [pName, setPName] = useState(''); const [pUnit, setPUnit] = useState(''); const [pPrice, setPPrice] = useState('')
   // 道の駅
   const [lName, setLName] = useState('')
+  const [lRate, setLRate] = useState('1')
   const [editingLoc, setEditingLoc] = useState<string | null>(null)
   const [editLocName, setEditLocName] = useState('')
+  const [editLocRate, setEditLocRate] = useState('1')
 
   function refresh() { fetch('/api/inventory').then(r => r.json()).then(setData) }
   useEffect(() => { refresh() }, [])
@@ -36,20 +38,26 @@ export default function MasterPage() {
   }
   async function addLocation() {
     if (!lName) { showToast('⚠️ 道の駅名を入力してください'); return }
-    const j = await api('add_location', { name: lName })
-    if (j?.ok) { setLName(''); showToast('✅ 道の駅を登録しました') }
+    const j = await api('add_location', { name: lName, rate: Number(lRate) || 1 })
+    if (j?.ok) { setLName(''); setLRate('1'); showToast('✅ 道の駅を登録しました') }
   }
-  function startEditLocation(l: any) { setEditingLoc(l.id || l.name); setEditLocName(l.name) }
+  function startEditLocation(l: any) {
+    setEditingLoc(l.id || l.name); setEditLocName(l.name); setEditLocRate(String(l.rate ?? 1))
+  }
   async function saveLocation(l: any) {
     const name = editLocName.trim()
     if (!name) { showToast('⚠️ 道の駅名を入力してください'); return }
-    if (name === l.name) { setEditingLoc(null); return }
-    if (!confirm(`「${l.name}」を「${name}」に変更します。\n過去の納品・売上・取引の納品先名もあわせて変更されます。\nよろしいですか？`)) return
-    const j = await api('update_location', { id: l.id, oldName: l.name, name })
+    const rate = Number(editLocRate)
+    if (!Number.isFinite(rate) || rate <= 0 || rate > 1) { showToast('⚠️ 掛け率は0より大きく1以下で入力してください'); return }
+    const renaming = name !== l.name
+    if (renaming && !confirm(`「${l.name}」を「${name}」に変更します。\n過去の納品・売上・取引の納品先名もあわせて変更されます。\nよろしいですか？`)) return
+    const j = await api('update_location', { id: l.id, oldName: l.name, name, rate })
     if (j?.ok) {
       setEditingLoc(null)
       const u = j.updated
-      showToast(`✅ 道の駅名を変更しました${u ? `（過去データ ${(u.shipments || 0) + (u.sales || 0) + (u.transactions || 0)} 件も更新）` : ''}`)
+      showToast(renaming
+        ? `✅ 道の駅を更新しました${u ? `（過去データ ${(u.shipments || 0) + (u.sales || 0) + (u.transactions || 0)} 件も更新）` : ''}`
+        : '✅ 道の駅を更新しました')
     }
   }
   async function removeLocation(l: any) {
@@ -100,8 +108,18 @@ export default function MasterPage() {
       <div style={s.box}>
         <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>🏪 道の駅マスタ（自分の納品先）</h2>
         <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12 }}>自分が納品する道の駅を登録します。ここで登録した道の駅は自分専用で、他の組合員には表示されません。</p>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-          <input style={{ ...s.input, maxWidth: 280 }} value={lName} onChange={e => setLName(e.target.value)} placeholder="道の駅名（例: 道の駅 ○○）" />
+        <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12 }}>
+          <b>掛け率</b>は売上のうち自分の収益になる割合です。例：掛け率 0.7 の道の駅で 460円の商品が売れた場合、収益は 322円（460円の70%）になります。掛け率は売上登録時に記録されるため、後から変更しても過去の収益は変わりません。
+        </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14, alignItems: 'flex-end' }}>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>道の駅名</label>
+            <input style={{ ...s.input, width: 260 }} value={lName} onChange={e => setLName(e.target.value)} placeholder="道の駅名（例: 道の駅 ○○）" />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>掛け率</label>
+            <input style={{ ...s.input, width: 100 }} type="number" min="0.01" max="1" step="0.01" value={lRate} onChange={e => setLRate(e.target.value)} placeholder="1" />
+          </div>
           <button style={s.btn} onClick={addLocation}>登録する</button>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -113,11 +131,19 @@ export default function MasterPage() {
                 {editing ? (
                   <>
                     <input
-                      style={{ ...s.input, maxWidth: 280 }}
+                      style={{ ...s.input, width: 240 }}
                       value={editLocName}
                       onChange={e => setEditLocName(e.target.value)}
                       onKeyDown={e => { if (e.key === 'Enter') saveLocation(l) }}
                       autoFocus
+                    />
+                    <span style={{ fontSize: 12, color: 'var(--muted)' }}>掛け率</span>
+                    <input
+                      style={{ ...s.input, width: 90 }}
+                      type="number" min="0.01" max="1" step="0.01"
+                      value={editLocRate}
+                      onChange={e => setEditLocRate(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') saveLocation(l) }}
                     />
                     <button style={s.btn} onClick={() => saveLocation(l)}>保存</button>
                     <button style={s.btnGhost} onClick={() => setEditingLoc(null)}>キャンセル</button>
@@ -125,7 +151,11 @@ export default function MasterPage() {
                 ) : (
                   <>
                     <span style={{ ...s.chip, fontSize: 13 }}>🏪 {l.name}</span>
-                    <button style={s.btnGhost} onClick={() => startEditLocation(l)}>✏️ 名称変更</button>
+                    <span style={{ fontSize: 12, color: (l.rate ?? 1) < 1 ? 'var(--accent)' : 'var(--muted)' }}>
+                      掛け率 {l.rate ?? 1}
+                      {(l.rate ?? 1) >= 1 && <span style={{ color: 'var(--muted)' }}>（収益＝売上）</span>}
+                    </span>
+                    <button style={s.btnGhost} onClick={() => startEditLocation(l)}>✏️ 編集</button>
                     <button style={s.btnDanger} onClick={() => removeLocation(l)}>🗑️ 削除</button>
                   </>
                 )}
