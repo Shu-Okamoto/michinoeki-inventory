@@ -15,8 +15,17 @@ function uid() { return Date.now().toString(36) + Math.random().toString(36).sli
 // 道の駅(locations)を {id, name, producer} に正規化（旧データの文字列にも対応）
 function normLocations(list: any[]): any[] {
   return (list || []).map((l: any) => typeof l === 'string'
-    ? { id: l, name: l, producer: '' }
-    : { id: l.id || l.name, name: l.name, producer: l.producer || '' })
+    ? { id: l, name: l, producer: '', rate: DEFAULT_RATE }
+    : { id: l.id || l.name, name: l.name, producer: l.producer || '', rate: normRate(l.rate) })
+}
+
+// 掛け率（道の駅ごとの取り分）。0.7 なら売上の70%が収益になる。
+// 未設定は 1（収益=売上）として扱う。
+const DEFAULT_RATE = 1
+function normRate(v: any): number {
+  const n = Number(v)
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_RATE
+  return Math.min(1, Math.round(n * 1000) / 1000)
 }
 
 // 商品マスタの単価を引く（売上/出荷登録時に単価をスナップショットするため）
@@ -99,7 +108,17 @@ export async function GET(req: NextRequest) {
     return []
   }
   const shp = scopeRecords((shipments as any[]) || [])
-  const sls = scopeRecords((sales as any[]) || [])
+  // 掛け率が未設定の旧データは、現在の道の駅の掛け率を当てて収益を出す
+  const rateOfLocation = (locName: string, producerName: string): number => {
+    const hit = allLocations.find((l: any) => l.name === locName && (l.producer || '') === producerName)
+      || allLocations.find((l: any) => l.name === locName)
+    return normRate(hit?.rate)
+  }
+  const sls = scopeRecords((sales as any[]) || []).map((x: any) => {
+    if (x.rate != null) return x
+    const rate = rateOfLocation(x.location || '', x.producer || '')
+    return { ...x, rate, revenue: Math.round((Number(x.amount) || 0) * rate), rateEstimated: true }
+  })
   // 自分自身のマスタ情報（住所・振込先を含む）。請求書の発行者欄に自分の情報を表示するため本人にのみ返す
   const selfRaw = (producers as any[] || []).find((p: any) => p.name === myName)
   const self = selfRaw ? (({ passwordHash, ...rest }: any) => rest)(selfRaw) : undefined
@@ -147,16 +166,14 @@ export async function POST(req: NextRequest) {
       const producer = hasOperationalAccess(role) ? (payload.producer || '') : (session.user?.name || '')
       if (!producer) return NextResponse.json({ error: '利用する組合員が必要です' }, { status: 400 })
       if (!list.find((l: any) => l.name === payload.name && (l.producer || '') === producer)) {
-        list.push({ id: uid(), name: payload.name, producer })
+        list.push({ id: uid(), name: payload.name, producer, rate: normRate(payload.rate) })
       }
       await kvSet(ORG, 'locations', list)
       return NextResponse.json({ ok: true })
     }
     case 'update_location': {
-      // 道の駅の名称変更。過去の納品・売上・取引の納品先名も追従させる。
+      // 道の駅の名称・掛け率の変更。名称を変えた場合は過去の納品・売上・取引の納品先名も追従させる。
       if (!MASTER_ROLES.has(role) && !hasOperationalAccess(role)) return NextResponse.json({ error: '権限がありません' }, { status: 403 })
-      const newName = String(payload.name || '').trim()
-      if (!newName) return NextResponse.json({ error: '名称が必要です' }, { status: 400 })
       const me = session.user?.name || ''
       const list = normLocations(await kvGet(ORG, 'locations') || [])
       const target = list.find((l: any) => payload.id ? l.id === payload.id : l.name === payload.oldName)
@@ -164,8 +181,15 @@ export async function POST(req: NextRequest) {
       // 自分の道の駅のみ変更可（組合は全件可）
       const owner = target.producer || ''
       if (!hasOperationalAccess(role) && owner !== me) return NextResponse.json({ error: '権限がありません' }, { status: 403 })
+      // 掛け率のみの変更も受け付ける
+      if (payload.rate !== undefined) target.rate = normRate(payload.rate)
       const oldName = target.name
-      if (oldName === newName) return NextResponse.json({ ok: true })
+      const newName = payload.name !== undefined ? String(payload.name).trim() : oldName
+      if (!newName) return NextResponse.json({ error: '名称が必要です' }, { status: 400 })
+      if (oldName === newName) {
+        await kvSet(ORG, 'locations', list)
+        return NextResponse.json({ ok: true })
+      }
       // 同じ組合員が同名の道の駅を持たないようにする
       if (list.find((l: any) => l !== target && l.name === newName && (l.producer || '') === owner)) {
         return NextResponse.json({ error: '同じ名前の道の駅が既にあります' }, { status: 400 })
@@ -356,17 +380,27 @@ export async function POST(req: NextRequest) {
       // 売上(レジ通過)＝販売者・組合・生産者(自分名義のみ)
       if (role === 'guest') return NextResponse.json({ error: '権限がありません' }, { status: 403 })
       const priceMap = await productPriceMap()
+      // 掛け率は登録時にスナップショットする（後で道の駅の掛け率を変えても過去の収益は変わらない）
+      const locList = normLocations(await kvGet(ORG, 'locations') || [])
+      const rateOf = (locName: string, producerName: string): number => {
+        const hit = locList.find((l: any) => l.name === locName && (l.producer || '') === producerName)
+          || locList.find((l: any) => l.name === locName)
+        return normRate(hit?.rate)
+      }
       // 納品実績から選ぶ画面では、明細ごとに納品先・生産者が異なりうる。
       // 明細に指定がなければ従来どおり payload の値を使う。
-      const recs = (payload.items || []).map((item: any) => ({
-        id: uid(), date: payload.date,
-        location: item.location || payload.location || '',
-        producer: role === '生産者'
+      const recs = (payload.items || []).map((item: any) => {
+        const location = item.location || payload.location || ''
+        const producerName = role === '生産者'
           ? (session.user?.name || '')
-          : (item.producer || payload.producer || ''),
-        product: item.product, qty: Number(item.qty) || 0, method: payload.method || '手動',
-        unitPrice: item.unitPrice !== undefined ? Number(item.unitPrice) || 0 : (priceMap[item.product] || 0),
-      }))
+          : (item.producer || payload.producer || '')
+        return {
+          id: uid(), date: payload.date, location, producer: producerName,
+          product: item.product, qty: Number(item.qty) || 0, method: payload.method || '手動',
+          unitPrice: item.unitPrice !== undefined ? Number(item.unitPrice) || 0 : (priceMap[item.product] || 0),
+          rate: rateOf(location, producerName),
+        }
+      })
       await addSales(ORG, recs)
       return NextResponse.json({ ok: true })
     }
