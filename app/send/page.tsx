@@ -3,6 +3,10 @@ import AppShell from '@/components/AppShell'
 import { useEffect, useState } from 'react'
 
 const today = () => new Date().toISOString().slice(0,10)
+// 重量の単位は小数（0.1刻み）で入力する。それ以外（個・パック・袋など）は1刻み。
+const DECIMAL_UNITS = ['KG', 'ＫＧ', 'G', 'グラム', 'キロ', 'キログラム']
+const isDecimalUnit = (unit: string): boolean =>
+  DECIMAL_UNITS.includes(String(unit || '').trim().toUpperCase())
 
 export default function SendPage() {
   const [data, setData] = useState<any>({ locations:[], products:[], shipments:[] })
@@ -19,11 +23,17 @@ export default function SendPage() {
 
   function showToast(m: string) { setToast(m); setTimeout(()=>setToast(''),2500) }
 
+  // 選択中の商品の単位（KGなら0.1刻み、個・パックなどは1刻み）
+  const selUnit: string = (data.products||[]).find((p:any)=>p.name===prod)?.unit || ''
+  const selStep = isDecimalUnit(selUnit) ? 0.1 : 1
+  const snapQty = (v: number): number => isDecimalUnit(selUnit) ? Math.round(v*10)/10 : Math.round(v)
+
   async function addShipment() {
     if (!loc||!prod||!qty||!date) { showToast('⚠️ すべての項目を入力してください'); return }
     // 生産者はログインユーザー本人（サーバー側で決定）
-    await api('add_shipment', { date, location:loc, product:prod, qty:Number(qty) })
-    setQty(''); showToast(`✅ ${loc} に ${prod} を ${qty}個 納品登録しました`)
+    const q = snapQty(Number(qty)||0)
+    await api('add_shipment', { date, location:loc, product:prod, qty:q })
+    setQty(''); showToast(`✅ ${loc} に ${prod} を ${q}${selUnit || '個'} 納品登録しました`)
   }
 
 
@@ -57,7 +67,11 @@ export default function SendPage() {
               <option value="">選択</option>{(data.locations||[]).map((l:any)=><option key={l.id} value={l.name}>{l.name}</option>)}</select>],
             ['商品', <select style={s.input} value={prod} onChange={e=>setProd(e.target.value)}>
               <option value="">選択</option>{(data.products||[]).filter((p:any)=>(p.status||'approved')==='approved').map((p:any)=><option key={p.id || p.name}>{p.name}</option>)}</select>],
-            ['個数', <input style={s.input} type="number" min="1" value={qty} onChange={e=>setQty(e.target.value)} placeholder="20" />],
+            [selUnit ? `納品数（${selUnit}）` : '納品数', <input
+              style={s.input} type="number" min="0" step={selStep} value={qty}
+              onChange={e=>setQty(e.target.value)}
+              onBlur={e=>{ const raw=e.target.value; if(raw==='')return; const sn=snapQty(Number(raw)||0); if(String(sn)!==raw) setQty(String(sn)) }}
+              placeholder={isDecimalUnit(selUnit) ? '20.5' : '20'} />],
             ['日付', <input style={s.input} type="date" value={date} onChange={e=>setDate(e.target.value)} />],
           ].map(([label, ctrl], i) => (
             <div key={i}><label style={s.label}>{label as string}</label>{ctrl as any}</div>
