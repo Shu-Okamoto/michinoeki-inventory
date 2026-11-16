@@ -819,3 +819,119 @@ export async function renameTransactionLocation(
     return res.count ?? 0
   })
 }
+
+// ---- 日報システム連携：店舗から報告された「在庫（棚残）」から販売数を算出する ----
+//
+// 日報には店舗×商品ごとの残数が記載される。販売数は
+//   販売数 = 納品数 −（引取・惣菜・割引・廃棄）− 報告された在庫
+// として求める。在庫は「その時点の状態」なので、同じ日報を何度送っても結果は同じになる。
+//
+// 同じ商品が複数回に分けて納品されている場合は、古い納品から売れたものとみなして
+// 販売数を割り当て、残った在庫は新しい納品に残す（FIFO）。
+// 買取（卸売）は店舗が買い取ったもので棚残の管理対象ではないため、対象外とする。
+
+export interface StockReportLine {
+  transactionId: string
+  date: string
+  deliveryQty: number
+  sellable: number      // 納品数から引取・惣菜・割引・廃棄を除いた、売れうる数
+  salesQtyBefore: number
+  salesQtyAfter: number
+  stockAfter: number    // この取引に残る在庫
+  soldOut: boolean
+}
+
+export interface StockReportResult {
+  seller: string
+  product: string
+  producer?: string
+  date: string
+  reportedStock: number   // 日報に書かれていた在庫
+  acceptedStock: number   // 実際に反映した在庫（売れうる数を超える分は頭打ち）
+  totalSellable: number
+  totalSalesBefore: number
+  totalSalesAfter: number
+  clamped: boolean
+  lines: StockReportLine[]
+}
+
+export async function applyStockReport(
+  org: string,
+  q: { seller: string; product: string; producer?: string; date: string; stock: number },
+): Promise<StockReportResult> {
+  await initTxTables()
+  return withRetry(async () => {
+    const sql = getSql()
+    // 対象：この店舗・この商品の販売中の産直取引を、古い納品から順に
+    const rows = await sql`
+      SELECT id, date, delivery_qty, sales_qty, retrieved_qty, souzai_qty, discount_qty, discard_qty, last_sales_date
+      FROM iwkagri_transactions
+      WHERE org = ${org} AND seller = ${q.seller} AND product = ${q.product}
+        AND (${q.producer || null}::text IS NULL OR producer = ${q.producer || null})
+        AND type <> '卸売'
+        AND status IN ('confirmed', 'sales_entered')
+      ORDER BY date ASC, id ASC
+    `
+    if (!rows.length) throw new Error('該当する販売中の納品が見つかりません（先に出荷・納品の登録が必要です）')
+
+    // 日報が古い日付に戻っている場合は反映しない（新しい報告を上書きしてしまうため）
+    const newer = rows.find((r: any) => (r.last_sales_date || '') > q.date)
+    if (newer) {
+      throw new Error(`${newer.last_sales_date} までの報告が反映済みのため、${q.date} の在庫は反映できません`)
+    }
+
+    interface Plan { id: string; deliveryQty: number; sellable: number; salesBefore: number; assign: number }
+    const plan: Plan[] = rows.map((r: any) => {
+      const dq = Number(r.delivery_qty) || 0
+      const reserved = (Number(r.retrieved_qty) || 0) + (Number(r.souzai_qty) || 0)
+        + (Number(r.discount_qty) || 0) + (Number(r.discard_qty) || 0)
+      return {
+        id: r.id as string,
+        deliveryQty: dq,
+        sellable: Math.max(0, Math.round((dq - reserved) * 10) / 10),
+        salesBefore: Number(r.sales_qty) || 0,
+        assign: 0,
+      }
+    })
+
+    const totalSellable = Math.round(plan.reduce((a, p) => a + p.sellable, 0) * 10) / 10
+    const reportedStock = Math.max(0, Number(q.stock) || 0)
+    const acceptedStock = Math.min(reportedStock, totalSellable)
+    let toSell = Math.round((totalSellable - acceptedStock) * 10) / 10
+
+    // 古い納品から売れたものとみなして販売数を割り当てる
+    for (const p of plan) {
+      if (toSell <= 0) break
+      const take = Math.min(toSell, p.sellable)
+      p.assign = Math.round(take * 10) / 10
+      toSell = Math.round((toSell - take) * 10) / 10
+    }
+
+    const lines: StockReportLine[] = []
+    for (const p of plan) {
+      const stockAfter = Math.round((p.sellable - p.assign) * 10) / 10
+      const soldOut = p.deliveryQty > 0 && stockAfter <= 0
+      if (p.assign !== p.salesBefore) {
+        await sql`
+          UPDATE iwkagri_transactions
+          SET sales_qty = ${p.assign}, last_sales_date = ${q.date},
+              status = ${soldOut ? 'completed' : 'sales_entered'}, updated_at = NOW()
+          WHERE org = ${org} AND id = ${p.id} AND status IN ('confirmed','sales_entered')
+        `
+      }
+      lines.push({
+        transactionId: p.id, date: q.date, deliveryQty: p.deliveryQty, sellable: p.sellable,
+        salesQtyBefore: p.salesBefore, salesQtyAfter: p.assign, stockAfter, soldOut,
+      })
+    }
+
+    return {
+      seller: q.seller, product: q.product, producer: q.producer, date: q.date,
+      reportedStock, acceptedStock, totalSellable,
+      totalSalesBefore: Math.round(plan.reduce((a, p) => a + p.salesBefore, 0) * 10) / 10,
+      totalSalesAfter: Math.round(plan.reduce((a, p) => a + p.assign, 0) * 10) / 10,
+      clamped: acceptedStock !== reportedStock,
+      lines,
+    }
+  })
+}

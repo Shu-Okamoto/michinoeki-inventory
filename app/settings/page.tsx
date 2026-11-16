@@ -7,6 +7,8 @@ export default function SettingsPage() {
   const [newLoc, setNewLoc] = useState(''); const [newLocProducer, setNewLocProducer] = useState(''); const [newLocRate, setNewLocRate] = useState('1'); const [newProd, setNewProd] = useState(''); const [newUnit, setNewUnit] = useState(''); const [newPrice, setNewPrice] = useState(''); const [newProducer, setNewProducer] = useState('')
   const [kyohaiUrl, setKyohaiUrl] = useState('')
   const [commissionRate, setCommissionRate] = useState('')
+  const [apiKey, setApiKey] = useState('')
+  const [showApiKey, setShowApiKey] = useState(false)
   const [priceEdits, setPriceEdits] = useState<Record<string, string>>({})
   const [producerEdits, setProducerEdits] = useState<Record<string, string>>({})
   const [unitEdits, setUnitEdits] = useState<Record<string, string>>({})
@@ -19,6 +21,7 @@ export default function SettingsPage() {
     setData(d)
     setKyohaiUrl(d.settings?.kyohaiUrl || 'https://coop-delivery.vercel.app/')
     setCommissionRate(String(d.settings?.commissionRate ?? ''))
+    setApiKey(d.settings?.externalApiKey || '')
     setMail({
       enabled: d.settings?.salesMail?.enabled || false,
       fromEmail: d.settings?.salesMail?.fromEmail || '',
@@ -154,6 +157,44 @@ export default function SettingsPage() {
           }
         </div>
       </div>
+      <div style={s.box}>
+        <div style={s.boxHead}>🔗 日報システム連携（在庫の自動取り込み）</div>
+        <div style={s.boxBody}>
+          <p style={{fontSize:12,color:'var(--muted)',marginBottom:12,lineHeight:1.8}}>
+            日報システムから<b>店舗×商品ごとの在庫</b>を送ってもらうと、販売数を自動で計算します
+            （販売数 = 納品数 − 引取・惣菜・割引・廃棄 − 在庫）。<br />
+            先に「どの店舗に何個入れたか」の登録が必要です。同じ日報を何度送っても二重計上しません。
+          </p>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap' as any,alignItems:'center',marginBottom:8}}>
+            <input
+              style={{...s.input,fontFamily:'Space Mono,monospace'}}
+              type={showApiKey ? 'text' : 'password'}
+              value={apiKey}
+              onChange={e=>setApiKey(e.target.value)}
+              placeholder="連携用APIキー（未設定）"
+            />
+            <button style={{...s.btn,background:'var(--surface2)',color:'var(--text)',border:'1px solid var(--border)'}} onClick={()=>setShowApiKey(v=>!v)}>
+              {showApiKey ? '隠す' : '表示'}
+            </button>
+            <button
+              style={{...s.btn,background:'var(--surface2)',color:'var(--text)',border:'1px solid var(--border)'}}
+              onClick={()=>{
+                const a = new Uint8Array(24)
+                crypto.getRandomValues(a)
+                setApiKey(Array.from(a).map(b=>b.toString(16).padStart(2,'0')).join(''))
+                setShowApiKey(true)
+              }}
+            >🎲 新しいキーを生成</button>
+            <button style={s.btn} onClick={async()=>{await api('save_settings',{externalApiKey:apiKey});showToast('✅ APIキーを保存しました')}}>💾 保存</button>
+          </div>
+          <p style={{fontSize:11,color:'var(--muted)',lineHeight:1.8}}>
+            このキーを日報システム側に設定し、リクエストヘッダ <code>X-API-KEY</code> に入れて送信してもらいます。<br />
+            送信先: <code>POST /api/external/stock</code>　／　対象商品の確認: <code>GET /api/external/stock?seller=店舗名</code><br />
+            キーを変更すると、古いキーでの送信はすぐに使えなくなります。空欄で保存すると（環境変数のキーがない場合）連携が止まります。
+          </p>
+        </div>
+      </div>
+
       <div style={s.box}>
         <div style={s.boxHead}>🚚 共配システム連携</div>
         <div style={s.boxBody}>
