@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 
 const today = () => new Date().toISOString().slice(0, 10)
+// 重量の単位は0.1刻み、個・パックなど個数の単位は1刻み（売上入力・納品入力と同じルール）
+const DECIMAL_UNITS = ['KG', 'ＫＧ', 'G', 'グラム', 'キロ', 'キログラム']
+const isDecimalUnit = (u: string): boolean => DECIMAL_UNITS.includes(String(u || '').trim().toUpperCase())
 const yen = (n: number) => '¥' + (Number(n) || 0).toLocaleString()
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
@@ -54,7 +57,17 @@ export default function DealsPage() {
   const [loc, setLoc] = useState('')
   const [prod, setProd] = useState('')
   const [qty, setQty] = useState('')
+  const [unit, setUnit] = useState('')
+  const [price, setPrice] = useState('')
   const [date, setDate] = useState(today())
+
+  // 生産者が登録できるのは産直委託のみ。販売先は組合（いわくにアグリパートナーズ）固定。
+  useEffect(() => {
+    if (!isProducer) return
+    setType('産直')
+    setSeller('組合')
+    setLoc('')
+  }, [isProducer])
 
   function loadTx() {
     fetch('/api/transactions').then(r => r.json()).then(d => setTx(d.transactions || []))
@@ -66,6 +79,13 @@ export default function DealsPage() {
   }, [])
 
   function showToast(m: string) { setToast(m); setTimeout(() => setToast(''), 2800) }
+
+  // 商品を選んだら、単位・売価の初期値を商品マスタから入れる（その場で変更できる）
+  function selectProduct(name: string) {
+    setProd(name)
+    const m = (master.products || []).find((p: any) => p.name === name)
+    if (m) { setUnit(m.unit || ''); setPrice(m.unitPrice ? String(m.unitPrice) : '') }
+  }
 
   async function action(act: string, payload: any, okMsg?: string) {
     const res = await fetch('/api/transactions', {
@@ -85,7 +105,12 @@ export default function DealsPage() {
     const needQty = type !== '卸売'
     if (!type || !p || !prod || !date || (needQty && !qty)) { showToast('⚠️ 種別・生産者・商品・日付' + (needQty ? '・数量' : '') + 'は必須です'); return }
     const ok = await action('create',
-      { type, date, producer: p, seller, location: loc, product: prod, shipQty: Number(qty) || 0 },
+      {
+        type, date, producer: p, seller, location: loc, product: prod,
+        shipQty: Number(qty) || 0,
+        ...(unit ? { unit } : {}),
+        ...(price !== '' ? { unitPrice: Number(price) || 0 } : {}),
+      },
       type === '卸売' ? '✅ 納品を登録しました' : '✅ 出荷を登録しました')
     if (ok) { setQty('') }
   }
@@ -133,10 +158,12 @@ export default function DealsPage() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 12, marginBottom: 14 }}>
             <div>
               <label style={s.label}>取引種別</label>
-              <select style={s.input} value={type} onChange={e => setType(e.target.value)}>
-                <option value="産直">産直委託（実売基準）</option>
-                <option value="卸売">買取（卸売・納品数基準）</option>
-              </select>
+              {isProducer
+                ? <input style={{ ...s.input, opacity: .7 }} value="産直委託（実売基準）" disabled />
+                : <select style={s.input} value={type} onChange={e => setType(e.target.value)}>
+                    <option value="産直">産直委託（実売基準）</option>
+                    <option value="卸売">買取（卸売・納品数基準）</option>
+                  </select>}
             </div>
             <div>
               <label style={s.label}>生産者</label>
@@ -149,15 +176,17 @@ export default function DealsPage() {
             </div>
             <div>
               <label style={s.label}>販売先（買い手）</label>
-              <select style={s.input} value={seller} onChange={e => setSeller(e.target.value)}>
-                <option value="">未定</option>
-                {type !== '卸売' && <option value="組合">組合（検品後に組合が販売先へ分配）</option>}
-                {sellerOpts.map((p: any) => <option key={p.id} value={p.name}>{p.name}</option>)}
-              </select>
+              {isProducer
+                ? <input style={{ ...s.input, opacity: .7 }} value="いわくにアグリパートナーズ" disabled />
+                : <select style={s.input} value={seller} onChange={e => setSeller(e.target.value)}>
+                    <option value="">未定</option>
+                    {type !== '卸売' && <option value="組合">組合（検品後に組合が販売先へ分配）</option>}
+                    {sellerOpts.map((p: any) => <option key={p.id} value={p.name}>{p.name}</option>)}
+                  </select>}
             </div>
             <div>
               <label style={s.label}>商品</label>
-              <select style={s.input} value={prod} onChange={e => setProd(e.target.value)}>
+              <select style={s.input} value={prod} onChange={e => selectProduct(e.target.value)}>
                 <option value="">選択</option>
                 {(master.products || []).filter((p: any) => {
                   if ((p.status || 'approved') !== 'approved') return false
@@ -167,16 +196,41 @@ export default function DealsPage() {
                 }).map((p: any) => <option key={p.id || p.name}>{p.name}</option>)}
               </select>
             </div>
+            {!isProducer && (
+              <div>
+                <label style={s.label}>納品先（任意）</label>
+                <select style={s.input} value={loc} onChange={e => setLoc(e.target.value)}>
+                  <option value="">未指定</option>
+                  {(master.locations || []).filter((l: any) => { const sel = isProducer ? myName : producer; return !sel || l.producer === sel }).map((l: any) => <option key={l.id} value={l.name}>{l.name}</option>)}
+                </select>
+              </div>
+            )}
             <div>
-              <label style={s.label}>納品先（任意）</label>
-              <select style={s.input} value={loc} onChange={e => setLoc(e.target.value)}>
-                <option value="">未指定</option>
-                {(master.locations || []).filter((l: any) => { const sel = isProducer ? myName : producer; return !sel || l.producer === sel }).map((l: any) => <option key={l.id} value={l.name}>{l.name}</option>)}
-              </select>
+              <label style={s.label}>単位</label>
+              <input style={s.input} list="deal-unit-list" value={unit} onChange={e => setUnit(e.target.value)} placeholder="袋 / 本 / KG" />
+              <datalist id="deal-unit-list">
+                <option value="袋" /><option value="本" /><option value="個" /><option value="KG" /><option value="束" /><option value="パック" /><option value="箱" />
+              </datalist>
             </div>
             <div>
-              <label style={s.label}>{type === '卸売' ? '納品数' : '出荷数'}</label>
-              <input style={s.input} type="number" min="0" step="0.1" value={qty} onChange={e => setQty(e.target.value)} placeholder="20" />
+              <label style={s.label}>売価（円）</label>
+              <input style={s.input} type="number" min="0" value={price} onChange={e => setPrice(e.target.value)} placeholder="460" />
+            </div>
+            <div>
+              <label style={s.label}>{(type === '卸売' ? '納品数' : '出荷数') + (unit ? `（${unit}）` : '')}</label>
+              <input
+                style={s.input} type="number" min="0"
+                step={isDecimalUnit(unit) ? 0.1 : 1}
+                value={qty}
+                onChange={e => setQty(e.target.value)}
+                onBlur={e => {
+                  const raw = e.target.value
+                  if (raw === '') return
+                  const n = Number(raw) || 0
+                  const sn = isDecimalUnit(unit) ? Math.round(n * 10) / 10 : Math.round(n)
+                  if (String(sn) !== raw) setQty(String(sn))
+                }}
+                placeholder={isDecimalUnit(unit) ? '20.5' : '20'} />
             </div>
             <div>
               <label style={s.label}>取引日</label>
@@ -184,7 +238,11 @@ export default function DealsPage() {
             </div>
           </div>
           <button style={s.btn} onClick={createTx}>{type === '卸売' ? '📥 納品を登録する' : '📦 出荷を登録する'}</button>
-          <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>単価は商品マスタ、手数料率は設定の既定値が自動適用されます（組合が確認時に調整可能）。</p>
+          <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8 }}>
+            {isProducer
+              ? '単位・売価は商品マスタの値が初期表示されます（この取引だけ変更したい場合は上書きできます）。手数料率は設定の既定値が自動適用され、組合の確認時に調整されます。'
+              : '単位・売価を空欄にすると商品マスタの値が使われます。手数料率は設定の既定値が自動適用されます（組合が確認時に調整可能）。'}
+          </p>
         </div>
       )}
 

@@ -18,13 +18,14 @@ const ITEMS = {
   email:     { href: '/email',     label: '✉️ Gmail連携' },
   history:   { href: '/history',   label: '📋 履歴' },
   analysis:  { href: '/shipment-analysis', label: '📊 出荷分析' },
+  tools:     { href: '/tools',     label: '📦 在庫管理ツール' },
   myInvoices:{ href: '/my-invoices', label: '🧾 自分の請求書' },
   settings:  { href: '/settings',  label: '⚙️ 設定' },
 }
 
-type View = 'admin' | 'partner' | 'seller' | 'producer' | 'guest'
+export type View = 'admin' | 'partner' | 'seller' | 'producer' | 'guest'
 
-function roleToView(role?: string): View {
+export function roleToView(role?: string): View {
   if (role === 'admin') return 'admin'
   if (role === '組合パートナー' || role === '組合管理者') return 'partner'
   if (role === '販売者') return 'seller'
@@ -36,36 +37,50 @@ const VIEW_LABEL: Record<View, string> = {
   admin: '管理者ビュー', partner: '組合パートナービュー', seller: '販売会社ビュー', producer: '生産者ビュー', guest: '—',
 }
 
+// 在庫管理ツールの中身（/tools のボタン遷移先）。メニューには出さない。
+export function toolsForView(view: View) {
+  if (view === 'admin' || view === 'partner') return [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history, ITEMS.email]
+  if (view === 'seller') return [ITEMS.sales, ITEMS.history]
+  if (view === 'producer') return [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history]
+  return []
+}
+
 function groupsForView(view: View) {
   // 表示順: お知らせ / ワークフロー / 共配システム / 在庫管理ツール / 管理
   if (view === 'admin') return [
     { title: 'お知らせ', items: [ITEMS.news] },
     { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals, ITEMS.settlement, ITEMS.analysis] },
     { title: '🚚 共配システム', items: [ITEMS.kyohai] },
-    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history, ITEMS.email] },
+    { title: '📦 在庫管理', items: [ITEMS.tools] },
     { title: '⚙️ 管理', items: [ITEMS.producers, ITEMS.settings] },
   ]
   if (view === 'partner') return [
     { title: 'お知らせ', items: [ITEMS.news] },
     { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals, ITEMS.analysis] },
     { title: '🚚 共配システム', items: [ITEMS.kyohai] },
-    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history, ITEMS.email] },
+    { title: '📦 在庫管理', items: [ITEMS.tools] },
     { title: '⚙️ マスタ登録', items: [ITEMS.master] },
   ]
   if (view === 'seller') return [
     { title: 'お知らせ', items: [ITEMS.news] },
     { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals, ITEMS.myInvoices] },
-    { title: '📦 在庫管理ツール', items: [ITEMS.sales, ITEMS.history] },
+    { title: '📦 在庫管理', items: [ITEMS.tools] },
     { title: '⚙️ マスタ登録', items: [ITEMS.master] },
   ]
   if (view === 'producer') return [
     { title: 'お知らせ', items: [ITEMS.news] },
     { title: '🤝 産直・卸売 ワークフロー', items: [ITEMS.deals, ITEMS.analysis, ITEMS.myInvoices] },
     { title: '🚚 共配システム', items: [ITEMS.kyohai] },
-    { title: '📦 在庫管理ツール', items: [ITEMS.dashboard, ITEMS.send, ITEMS.sales, ITEMS.history] },
+    { title: '📦 在庫管理', items: [ITEMS.tools] },
     { title: '⚙️ マスタ登録', items: [ITEMS.master] },
   ]
   return []
+}
+
+// ヘッダーに出す現在のページ名
+function currentLabel(pathname: string): string {
+  const hit = Object.values(ITEMS).find(i => i.href === pathname)
+  return hit ? hit.label : ''
 }
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -73,10 +88,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
   const [logoOk, setLogoOk] = useState(true)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
     if (status === 'unauthenticated') router.push('/')
   }, [status, router])
+
+  // ページが変わったらメニューを閉じる
+  useEffect(() => { setMenuOpen(false) }, [pathname])
+
+  // メニューを開いている間はEscapeで閉じ、背面のスクロールを止める
+  useEffect(() => {
+    if (!menuOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false) }
+    window.addEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev }
+  }, [menuOpen])
 
   if (status === 'loading' || !session) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh' }}>
@@ -93,6 +122,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <div className={styles.shell}>
       <header className={styles.header}>
         <div className={styles.logo}>
+          {view !== 'guest' && (
+            <button className={styles.menuBtn} onClick={() => setMenuOpen(true)} aria-label="メニューを開く" aria-expanded={menuOpen}>
+              <span className={styles.menuBtnIcon}>☰</span>メニュー
+            </button>
+          )}
           {logoOk
             ? <img src="/logo.png" alt="いわくにアグリパートナーズ" className={styles.logoImg} onError={() => setLogoOk(false)} />
             : <div className={styles.logoIcon}>🌾</div>}
@@ -102,6 +136,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <div className={styles.headerRight}>
+          {view !== 'guest' && <span className={styles.currentPage}>{currentLabel(pathname)}</span>}
           {view !== 'guest' && <span className={styles.viewBadge}>{VIEW_LABEL[view]}</span>}
           <span className={styles.userEmail}>{session.user?.name || identity}</span>
           <button className={styles.signOutBtn} onClick={() => signOut({ callbackUrl: '/' })}>
@@ -123,24 +158,35 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </main>
       ) : (
         <>
-          <nav className={styles.nav}>
-            {groups.map(group => (
-              <div key={group.title} className={styles.navGroup}>
-                <span className={styles.navGroupTitle}>{group.title}</span>
-                <div className={styles.navGroupItems}>
-                  {group.items.map(({ href, label }) => (
-                    <Link
-                      key={href}
-                      href={href}
-                      className={`${styles.navItem} ${pathname === href ? styles.active : ''}`}
-                    >
-                      {label}
-                    </Link>
+          {menuOpen && (
+            <>
+              <div className={styles.overlay} onClick={() => setMenuOpen(false)} />
+              <nav className={styles.drawer} aria-label="メニュー">
+                <div className={styles.drawerHead}>
+                  <span className={styles.drawerTitle}>メニュー</span>
+                  <button className={styles.drawerClose} onClick={() => setMenuOpen(false)} aria-label="閉じる">×</button>
+                </div>
+                <div className={styles.drawerBody}>
+                  {groups.map(group => (
+                    <div key={group.title} className={styles.navGroup}>
+                      <span className={styles.navGroupTitle}>{group.title}</span>
+                      <div className={styles.navGroupItems}>
+                        {group.items.map(({ href, label }) => (
+                          <Link
+                            key={href}
+                            href={href}
+                            className={`${styles.navItem} ${pathname === href ? styles.active : ''}`}
+                          >
+                            {label}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
-              </div>
-            ))}
-          </nav>
+              </nav>
+            </>
+          )}
           <main className={styles.main}>{children}</main>
         </>
       )}
