@@ -845,6 +845,7 @@ export interface StockReportResult {
   seller: string
   product: string
   producer?: string
+  location?: string
   date: string
   reportedStock: number   // 日報に書かれていた在庫
   acceptedStock: number   // 実際に反映した在庫（売れうる数を超える分は頭打ち）
@@ -857,22 +858,32 @@ export interface StockReportResult {
 
 export async function applyStockReport(
   org: string,
-  q: { seller: string; product: string; producer?: string; date: string; stock: number },
+  q: { seller: string; product: string; producer?: string; location?: string; date: string; stock: number },
 ): Promise<StockReportResult> {
   await initTxTables()
   return withRetry(async () => {
     const sql = getSql()
     // 対象：この店舗・この商品の販売中の産直取引を、古い納品から順に
     const rows = await sql`
-      SELECT id, date, delivery_qty, sales_qty, retrieved_qty, souzai_qty, discount_qty, discard_qty, last_sales_date
+      SELECT id, date, location, delivery_qty, sales_qty, retrieved_qty, souzai_qty, discount_qty, discard_qty, last_sales_date
       FROM iwkagri_transactions
       WHERE org = ${org} AND seller = ${q.seller} AND product = ${q.product}
         AND (${q.producer || null}::text IS NULL OR producer = ${q.producer || null})
+        AND (${q.location || null}::text IS NULL OR location = ${q.location || null})
         AND type <> '卸売'
         AND status IN ('confirmed', 'sales_entered')
       ORDER BY date ASC, id ASC
     `
     if (!rows.length) throw new Error('該当する販売中の納品が見つかりません（先に出荷・納品の登録が必要です）')
+
+    // 店舗（納品先）が複数にまたがる場合、指定がないと在庫を合算してしまうため拒否する。
+    // 例: みかわ西店とみかわ南店の在庫を1つの数字で受け取ってしまうのを防ぐ。
+    if (!q.location) {
+      const locs = Array.from(new Set(rows.map((r: any) => r.location || '').filter(Boolean)))
+      if (locs.length > 1) {
+        throw new Error(`この商品は複数の店舗に納品されています（${locs.join(' / ')}）。location で店舗を指定してください`)
+      }
+    }
 
     // 日報が古い日付に戻っている場合は反映しない（新しい報告を上書きしてしまうため）
     const newer = rows.find((r: any) => (r.last_sales_date || '') > q.date)
@@ -926,7 +937,9 @@ export async function applyStockReport(
     }
 
     return {
-      seller: q.seller, product: q.product, producer: q.producer, date: q.date,
+      seller: q.seller, product: q.product, producer: q.producer,
+      location: q.location || (rows[0] as any).location || undefined,
+      date: q.date,
       reportedStock, acceptedStock, totalSellable,
       totalSalesBefore: Math.round(plan.reduce((a, p) => a + p.salesBefore, 0) * 10) / 10,
       totalSalesAfter: Math.round(plan.reduce((a, p) => a + p.assign, 0) * 10) / 10,

@@ -34,22 +34,37 @@ X-API-KEY: <APIキー>
 
 キーはポータルの **設定 → 🔗 日報システム連携** で生成・確認できます。キーを変更すると古いキーは即座に使えなくなります。
 
+## 販売先（会社）と店舗（納品先）
+
+ポータルは取引ごとに**販売先（会社）**と**納品先（店舗）**を分けて持っています。
+
+| 構成 | `seller` | `location` |
+|---|---|---|
+| 1社が複数店舗を持つ（例：みかわ の 西店・南店） | `みかわ` | `西店` / `南店` |
+| 店舗ごとに独立した取引先 | `道の駅A` | 省略可 |
+
+**在庫は店舗ごとに数えるので、1社で複数店舗ある場合は `location` の指定が必須です。**
+指定せずに送ると、複数店舗に納品がある商品はエラーになります（在庫を合算して販売数を誤るのを防ぐため）。1店舗しかない商品は省略できます。
+
 ## 1. 対象商品と現在の在庫を取得する
 
 日報に記載してもらう対象（その店舗で販売中の商品）を取得します。
 
 ```
-GET /api/external/stock?seller=道の駅A
+GET /api/external/stock?seller=みかわ
+GET /api/external/stock?seller=みかわ&location=西店   ← 店舗を絞る場合
 ```
 
 **レスポンス**
 
 ```json
 {
-  "seller": "道の駅A",
+  "seller": "みかわ",
   "items": [
-    { "product": "白瓜", "producer": "森中", "unit": "袋",
-      "delivered": 15, "sold": 10, "stock": 4, "lots": 2 }
+    { "location": "西店", "product": "白瓜", "producer": "森中", "unit": "袋",
+      "delivered": 10, "sold": 6, "stock": 4, "lots": 1 },
+    { "location": "南店", "product": "白瓜", "producer": "森中", "unit": "袋",
+      "delivered": 6, "sold": 5, "stock": 1, "lots": 1 }
   ]
 }
 ```
@@ -69,25 +84,43 @@ Content-Type: application/json
 X-API-KEY: <APIキー>
 ```
 
+店舗ごとに送る場合（`location` を全体で指定）:
+
 ```json
 {
-  "seller": "道の駅A",
-  "date": "2026-11-16",
+  "seller": "みかわ",
+  "location": "西店",
+  "date": "2026-11-17",
   "source": "日報システム",
   "items": [
-    { "product": "白瓜", "stock": 4, "producer": "森中" },
+    { "product": "白瓜", "stock": 4 },
     { "product": "茄子", "stock": 0 }
+  ]
+}
+```
+
+1回のリクエストに複数店舗を混ぜる場合（明細ごとに `location`）:
+
+```json
+{
+  "seller": "みかわ",
+  "date": "2026-11-17",
+  "items": [
+    { "location": "西店", "product": "白瓜", "stock": 4 },
+    { "location": "南店", "product": "白瓜", "stock": 1 }
   ]
 }
 ```
 
 | 項目 | 必須 | 意味 |
 |---|---|---|
-| `seller` | ○ | 店舗名（ポータルに登録されている販売先の名称と一致させる） |
+| `seller` | ○ | 販売先（会社）の名称。ポータルの登録と一致させる |
+| `location` | △ | 店舗（納品先）。1社で複数店舗ある場合は必須。明細ごとの指定が優先される |
 | `date` | | 在庫を数えた日。`YYYY-MM-DD`。省略時は当日 |
 | `source` | | 送信元の識別（記録用・任意） |
 | `items[].product` | ○ | 商品名（商品マスタの名称と一致させる） |
 | `items[].stock` | ○ | **在庫数**（0以上。KG商品は小数可） |
+| `items[].location` | △ | この明細の店舗。全体の `location` を上書きする |
 | `items[].producer` | | 同名商品が複数の生産者にある場合に指定 |
 
 **レスポンス**
@@ -143,6 +176,7 @@ X-API-KEY: <APIキー>
 | メッセージ | 対処 |
 |---|---|
 | 該当する販売中の納品が見つかりません | その店舗・商品の納品登録が未済。商品名・店舗名の表記ゆれも確認 |
+| この商品は複数の店舗に納品されています（…） | `location` で店舗を指定してください（在庫の合算を防ぐためのエラー） |
 | `YYYY-MM-DD` までの報告が反映済みのため… | より新しい日付の報告が既に反映済み。古い日付へ巻き戻す送信は拒否されます |
 | stock は0以上の数値で指定してください | 在庫の値を確認 |
 
@@ -157,10 +191,10 @@ X-API-KEY: <APIキー>
 ```bash
 # 対象商品の確認
 curl -H "X-API-KEY: $KEY" \
-  "https://<ポータルのURL>/api/external/stock?seller=道の駅A"
+  "https://<ポータルのURL>/api/external/stock?seller=みかわ"
 
-# 在庫の送信
+# 在庫の送信（西店）
 curl -X POST -H "X-API-KEY: $KEY" -H "Content-Type: application/json" \
-  -d '{"seller":"道の駅A","date":"2026-11-16","items":[{"product":"白瓜","stock":4}]}' \
+  -d '{"seller":"みかわ","location":"西店","date":"2026-11-17","items":[{"product":"白瓜","stock":4}]}' \
   "https://<ポータルのURL>/api/external/stock"
 ```

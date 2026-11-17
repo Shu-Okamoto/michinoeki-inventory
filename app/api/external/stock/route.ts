@@ -14,11 +14,13 @@ import { listTransactions, applyStockReport } from '@/lib/transactions'
 //
 // 認証: ヘッダ X-API-KEY が EXTERNAL_API_KEY（環境変数）または settings.externalApiKey と一致すること。
 //
-// GET  /api/external/stock?seller=道の駅A
-//   その店舗で現在販売中の商品と在庫（日報に記載してもらう対象）を返す。
+// GET  /api/external/stock?seller=みかわ[&location=西店]
+//   その販売先で現在販売中の商品と在庫（日報に記載してもらう対象）を店舗ごとに返す。
 //
 // POST /api/external/stock
-//   { seller, date?, source?, items: [{ product, stock, producer? }] }
+//   { seller, location?, date?, source?, items: [{ product, stock, producer?, location? }] }
+//   1社が複数店舗を持つ場合は location で店舗を指定する（例: みかわ の 西店 / 南店）。
+//   指定がなく、その商品が複数店舗に納品されている場合は、在庫の合算を避けるためエラーにする。
 //   日報に記載がない商品は変更しない（書き漏れで販売数が勝手に増えないようにするため）。
 export const maxDuration = 30
 
@@ -36,18 +38,21 @@ const stockOf = (t: any) => Math.round(Math.max(0,
 
 export async function GET(req: NextRequest) {
   if (!await authorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  const seller = new URL(req.url).searchParams.get('seller') || ''
+  const sp = new URL(req.url).searchParams
+  const seller = sp.get('seller') || ''
+  const locationFilter = sp.get('location') || ''
   if (!seller) return NextResponse.json({ error: 'seller is required' }, { status: 400 })
 
   const all = await listTransactions(ORG, { seller })
   const active = all.filter(t => t.type !== '卸売' && ['confirmed', 'sales_entered'].includes(t.status))
+    .filter(t => !locationFilter || (t.location || '') === locationFilter)
 
-  // 日報は店舗×商品ごとの残数なので、商品（＋生産者）単位にまとめて返す
+  // 日報は店舗×商品ごとの残数なので、店舗（納品先）×商品（＋生産者）単位にまとめて返す
   const map = new Map<string, any>()
   for (const t of active) {
-    const key = JSON.stringify([t.product, t.producer])
+    const key = JSON.stringify([t.location || '', t.product, t.producer])
     if (!map.has(key)) {
-      map.set(key, { product: t.product, producer: t.producer, unit: t.unit || '', delivered: 0, sold: 0, stock: 0, lots: 0 })
+      map.set(key, { location: t.location || '', product: t.product, producer: t.producer, unit: t.unit || '', delivered: 0, sold: 0, stock: 0, lots: 0 })
     }
     const g = map.get(key)
     g.delivered += Number(t.deliveryQty) || 0
@@ -60,7 +65,8 @@ export async function GET(req: NextRequest) {
     seller,
     items: Array.from(map.values())
       .map(g => ({ ...g, delivered: r1(g.delivered), sold: r1(g.sold), stock: r1(g.stock) }))
-      .sort((a, b) => String(a.product).localeCompare(String(b.product), 'ja')),
+      .sort((a, b) => String(a.location).localeCompare(String(b.location), 'ja')
+        || String(a.product).localeCompare(String(b.product), 'ja')),
   })
 }
 
@@ -77,9 +83,11 @@ export async function POST(req: NextRequest) {
   }
 
   // 1件だけ送る形（{ product, stock }）も受け付ける
+  // 店舗（納品先）。1社が複数店舗を持つ場合に指定する（例: みかわ の 西店 / 南店）
+  const location = body.location !== undefined ? String(body.location || '') : ''
   const items: any[] = Array.isArray(body.items)
     ? body.items
-    : (body.product !== undefined ? [{ product: body.product, stock: body.stock, producer: body.producer }] : [])
+    : (body.product !== undefined ? [{ product: body.product, stock: body.stock, producer: body.producer, location: body.location }] : [])
   if (items.length === 0) {
     return NextResponse.json({ error: 'items（product と stock の配列）が必要です' }, { status: 400 })
   }
@@ -89,16 +97,20 @@ export async function POST(req: NextRequest) {
   for (const item of items) {
     const product = String(item?.product || '')
     const stock = Number(item?.stock)
-    if (!product) { errors.push({ product: item?.product ?? null, error: 'product が必要です' }); continue }
+    const itemLocation = (item?.location !== undefined ? String(item.location || '') : location) || null
+    if (!product) { errors.push({ product: item?.product ?? null, location: itemLocation, error: 'product が必要です' }); continue }
     if (!Number.isFinite(stock) || stock < 0) {
-      errors.push({ product, error: 'stock は0以上の数値で指定してください' }); continue
+      errors.push({ product, location: itemLocation, error: 'stock は0以上の数値で指定してください' }); continue
     }
     try {
       const r = await applyStockReport(ORG, {
-        seller, product, producer: item?.producer ? String(item.producer) : undefined, date, stock,
+        seller, product,
+        producer: item?.producer ? String(item.producer) : undefined,
+        location: (item?.location !== undefined ? String(item.location || '') : location) || undefined,
+        date, stock,
       })
       results.push({
-        product: r.product, producer: r.producer, date: r.date,
+        product: r.product, producer: r.producer, location: r.location, date: r.date,
         reportedStock: r.reportedStock, acceptedStock: r.acceptedStock,
         totalSellable: r.totalSellable,
         salesBefore: r.totalSalesBefore, salesAfter: r.totalSalesAfter,
@@ -107,7 +119,7 @@ export async function POST(req: NextRequest) {
         lots: r.lines.map(l => ({ transactionId: l.transactionId, salesQty: l.salesQtyAfter, stock: l.stockAfter, soldOut: l.soldOut })),
       })
     } catch (e: any) {
-      errors.push({ product, error: e?.message || '反映に失敗しました' })
+      errors.push({ product, location: itemLocation, error: e?.message || '反映に失敗しました' })
     }
   }
 
