@@ -78,7 +78,7 @@ export default function DealsPage() {
     fetch('/api/inventory').then(r => r.json()).then(setMaster)
   }, [])
 
-  function showToast(m: string) { setToast(m); setTimeout(() => setToast(''), 2800) }
+  function showToast(m: string, ms = 2800) { setToast(m); setTimeout(() => setToast(''), ms) }
 
   // 商品を選んだら、単位・売価の初期値を商品マスタから入れる（その場で変更できる）
   function selectProduct(name: string) {
@@ -94,6 +94,19 @@ export default function DealsPage() {
     })
     const j = await res.json().catch(() => ({}))
     if (!res.ok) { showToast('⚠️ ' + (j.error || '失敗しました')); return false }
+    // 棚残に収まらず切り詰められた場合は、黙って捨てずに知らせる
+    if (j.clamped) {
+      showToast(
+        (j.reason === 'not-applicable'
+          ? '⚠️ この取引には入力できません（買取のため棚残の管理対象外です）'
+          : `⚠️ 棚残が足りないため ${j.applied} までしか記録できませんでした（入力: ${j.requested}）。`
+            + '売れ残りを先に販売数として計上している可能性があります。'
+            + '日報の在庫を正しい数に訂正して送り直すか、販売数を見直してから再入力してください。'),
+        9000,
+      )
+      loadTx()
+      return false
+    }
     if (okMsg) showToast(okMsg)
     loadTx()
     return true
@@ -497,7 +510,7 @@ export default function DealsPage() {
         })}
       </div>
 
-      {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, background: 'var(--surface)', border: '1px solid var(--accent)', borderRadius: 10, padding: '14px 20px', fontSize: 13, color: 'var(--text)', boxShadow: '0 4px 20px rgba(0,0,0,.12)', zIndex: 9999 }}>{toast}</div>}
+      {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, left: 24, maxWidth: 520, marginLeft: 'auto', background: 'var(--surface)', border: '1px solid var(--accent)', borderRadius: 10, padding: '14px 20px', fontSize: 13, lineHeight: 1.7, color: 'var(--text)', boxShadow: '0 4px 20px rgba(0,0,0,.12)', zIndex: 9999 }}>{toast}</div>}
     </AppShell>
   )
 }
