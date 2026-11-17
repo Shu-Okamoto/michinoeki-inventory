@@ -410,17 +410,29 @@ export async function completeTransaction(org: string, id: string): Promise<void
 // 棚残チャネル（引取・惣菜・割引）の共通更新。産直のみ。
 // 対象チャネルの数量を絶対値で更新し、棚残を負にしないよう上限を掛け、
 // 全チャネル合計が納品数に達したら completed。
+// 棚残チャネル（引取・惣菜・割引・廃棄）の入力結果。
+// 棚残に収まらず切り詰めた場合に呼び出し側へ知らせる（黙って捨てないため）。
+export interface ChannelResult {
+  requested: number
+  applied: number
+  clamped: boolean
+  shelf: number
+  reason: 'ok' | 'shelf' | 'not-applicable'
+}
+
 async function setChannelQty(
   org: string, id: string,
   channel: 'retrieved_qty' | 'souzai_qty' | 'discount_qty' | 'discard_qty',
   qty: number,
   extra?: { discountUnitPrice?: number; floorPrice?: boolean },
-): Promise<void> {
+): Promise<ChannelResult> {
   await initTxTables()
-  await withRetry(async () => {
+  return withRetry(async () => {
     const sql = getSql()
     const rows = await sql`SELECT type, delivery_qty, sales_qty, retrieved_qty, souzai_qty, discount_qty, discard_qty, unit_price FROM iwkagri_transactions WHERE org = ${org} AND id = ${id}`
-    if (!rows.length || rows[0].type === '卸売') return
+    if (!rows.length || rows[0].type === '卸売') {
+      return { requested: Number(qty) || 0, applied: 0, clamped: true, shelf: 0, reason: 'not-applicable' as const }
+    }
     const dq = Number(rows[0].delivery_qty) || 0
     const others = ['retrieved_qty', 'souzai_qty', 'discount_qty', 'discard_qty']
       .filter(c => c !== channel)
@@ -449,16 +461,22 @@ async function setChannelQty(
     } else {
       await sql`UPDATE iwkagri_transactions SET discount_qty = ${q}, discount_unit_price = ${dup}, status = ${status}, updated_at = NOW() WHERE org = ${org} AND id = ${id} AND status IN ('confirmed','sales_entered')`
     }
+    const requested = Math.max(0, Number(qty) || 0)
+    return {
+      requested, applied: q, clamped: q !== requested,
+      shelf: Math.round(Math.max(0, dq - (q + others)) * 10) / 10,
+      reason: q !== requested ? ('shelf' as const) : ('ok' as const),
+    }
   })
 }
 
 // 引取依頼: 生産者が引き取る数を確定（産直のみ）
-export async function retrieveTransaction(org: string, id: string, retrievedQty: number): Promise<void> {
+export async function retrieveTransaction(org: string, id: string, retrievedQty: number): Promise<ChannelResult> {
   return setChannelQty(org, id, 'retrieved_qty', retrievedQty)
 }
 
 // 廃棄: 売れ残りの廃棄数を記録（無償・棚残から減算・産直のみ）
-export async function discardTransaction(org: string, id: string, discardQty: number): Promise<void> {
+export async function discardTransaction(org: string, id: string, discardQty: number): Promise<ChannelResult> {
   return setChannelQty(org, id, 'discard_qty', discardQty)
 }
 
@@ -499,12 +517,12 @@ export async function distributeTransaction(org: string, id: string, allocations
 }
 
 // 惣菜利用: 販売者が3割価格で買い取る数を記録（産直のみ）
-export async function souzaiTransaction(org: string, id: string, souzaiQty: number): Promise<void> {
+export async function souzaiTransaction(org: string, id: string, souzaiQty: number): Promise<ChannelResult> {
   return setChannelQty(org, id, 'souzai_qty', souzaiQty)
 }
 
 // 割引販売: 販売者が割引価格（半額〜定価）で売った数を記録（産直のみ）
-export async function discountSaleTransaction(org: string, id: string, discountQty: number, discountUnitPrice: number): Promise<void> {
+export async function discountSaleTransaction(org: string, id: string, discountQty: number, discountUnitPrice: number): Promise<ChannelResult> {
   return setChannelQty(org, id, 'discount_qty', discountQty, { discountUnitPrice })
 }
 

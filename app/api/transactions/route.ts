@@ -190,26 +190,26 @@ export async function POST(req: NextRequest) {
     case 'retrieve': {
       // 引取依頼の数量確定（販売者が確定／生産者・組合も可）。産直のみ
       if (role !== '販売者' && role !== '生産者' && !hasOperationalAccess(role)) return deny()
-      await retrieveTransaction(ORG, payload.id, Number(payload.retrievedQty) || 0)
-      return NextResponse.json({ ok: true })
+      const r = await retrieveTransaction(ORG, payload.id, Number(payload.retrievedQty) || 0)
+      return NextResponse.json({ ok: true, ...r })
     }
     case 'souzai': {
       // 惣菜利用（3割価格で買取）。産直のみ
       if (role !== '販売者' && !hasOperationalAccess(role)) return deny()
-      await souzaiTransaction(ORG, payload.id, Number(payload.souzaiQty) || 0)
-      return NextResponse.json({ ok: true })
+      const r = await souzaiTransaction(ORG, payload.id, Number(payload.souzaiQty) || 0)
+      return NextResponse.json({ ok: true, ...r })
     }
     case 'discount_sale': {
       // 割引販売（半額〜定価）。産直のみ
       if (role !== '販売者' && !hasOperationalAccess(role)) return deny()
-      await discountSaleTransaction(ORG, payload.id, Number(payload.discountQty) || 0, Number(payload.discountUnitPrice) || 0)
-      return NextResponse.json({ ok: true })
+      const r = await discountSaleTransaction(ORG, payload.id, Number(payload.discountQty) || 0, Number(payload.discountUnitPrice) || 0)
+      return NextResponse.json({ ok: true, ...r })
     }
     case 'discard': {
       // 廃棄（無償・棚残から減算）。産直のみ
       if (role !== '販売者' && !hasOperationalAccess(role)) return deny()
-      await discardTransaction(ORG, payload.id, Number(payload.discardQty) || 0)
-      return NextResponse.json({ ok: true })
+      const r = await discardTransaction(ORG, payload.id, Number(payload.discardQty) || 0)
+      return NextResponse.json({ ok: true, ...r })
     }
     case 'producer_confirm': {
       // 生産者が成立内容を確認 → 請求書作成の対象へ（組合パートナー / admin も代行可）
